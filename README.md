@@ -1,4 +1,4 @@
-# Madison: AI-Powered Marketing & Branding Projects & Tools Matrix
+# Madison: Agentic Marketing & Branding Framework
 
 ## Overview
 
