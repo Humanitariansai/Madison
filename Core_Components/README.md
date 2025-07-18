@@ -2,6 +2,45 @@
 
 Based on my analysis of the provided documents, I've identified the key components and agents that would be needed across these projects. Since many components are shared or have similar functionality across projects, I've organized them into logical categories with specific implementations.
 
+# Data Collection & Intelligence Agents - Importance Analysis
+
+| Agent | Primary Function | Importance Level | Key Value Proposition |
+|-------|-----------------|------------------|------------------------|
+| **Social Sentiment Agent** | Monitor and analyze brand mentions across social media | ⭐⭐⭐⭐⭐ | Real-time sentiment analysis provides immediate feedback on brand perception and potential crisis situations |
+| **Researcher Agent** | Gather information from diverse sources | ⭐⭐⭐⭐⭐ | Acts as the primary information gathering mechanism, feeding data to all other agents |
+| **Market Monitoring Agent** | Analyze industry trends and competitors | ⭐⭐⭐⭐ | Provides critical competitive intelligence and market positioning data |
+| **Research Planner Agent** | Decompose complex questions into research tasks | ⭐⭐⭐⭐ | Ensures research efforts are structured, efficient, and comprehensive |
+| **News Analysis Agent** | Track brand coverage in news and publications | ⭐⭐⭐ | Monitors formal media coverage that may impact brand perception |
+| **Regulatory Tracking Agent** | Monitor regulatory changes affecting marketing | ⭐⭐⭐ | Ensures marketing compliance and identifies potential regulatory risks |
+
+## Importance Justification
+
+1. **Social Sentiment Agent** and **Researcher Agent** are rated highest because:
+   - They provide the most immediate and actionable market intelligence
+   - Social sentiment directly reflects customer perception in real-time
+   - The Researcher Agent serves as the primary data collection mechanism for all projects
+
+2. **Market Monitoring** and **Research Planner** agents are highly important as:
+   - They provide structured approaches to competitive intelligence
+   - They ensure research efforts are organized and efficient
+   - They help identify market opportunities and threats
+
+3. **News Analysis** and **Regulatory Tracking** agents, while still important:
+   - Tend to provide slower-moving data points
+   - Focus on more specialized aspects of market intelligence
+   - Serve supporting roles to the primary intelligence gathering functions
+
+## Integration Requirements
+
+These data collection agents must:
+- Share a common data storage infrastructure
+- Use standardized data formats for cross-agent communication
+- Implement consistent taxonomies for entity recognition
+- Feature real-time synchronization capabilities
+- Include confidence scoring for all collected intelligence
+
+The effective implementation of these data collection agents establishes the foundation upon which all other marketing and customer experience initiatives can build.
+
 ## 1. Data Collection & Intelligence Agents
 
 ### Social Sentiment Agent
