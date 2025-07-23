@@ -1,8 +1,7 @@
 # Anamika Bharali
 
 United States 
-[LinkedIn](https://www.linkedin.com/in/anamikabharali) | [Portfolio](https://anamikabharali.github.io) :contentReference[oaicite:0]{index=0}  
-
+[LinkedIn](https://www.linkedin.com/in/anamikabharali) | [Portfolio](https://anamikabharali.github.io) 
 ---
 
 ## Work Experience
