@@ -1,6 +1,6 @@
 # Anamika Bharali
 
-United States · (857) 370-2151 · anamikabharali23@gmail.com  
+United States 
 [LinkedIn](https://www.linkedin.com/in/anamikabharali) | [Portfolio](https://anamikabharali.github.io) :contentReference[oaicite:0]{index=0}  
 
 ---
