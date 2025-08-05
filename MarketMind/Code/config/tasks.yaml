@@ -1,0 +1,48 @@
+market_research_task:
+  description: >
+    Conduct a comprehensive analysis of the market for {product_name}.
+    Identify the current market size, projected growth rate, and key industry trends.
+    Gather information from reputable news sources and industry reports.
+  expected_output: >
+    A detailed market analysis report in Markdown format.
+    Include sections for Market Size, Growth Projections, and Key Trends.
+    Cite at least 3 sources.
+  agent: market_research_analyst
+  output_file: 'market_research_report.md'
+
+competitor_analysis_task:
+  description: >
+    Analyze the top 2-3 direct competitors for {product_name}.
+    For each competitor, identify their core products, pricing strategy, and recent marketing campaigns.
+    Perform a SWOT analysis for each competitor.
+  expected_output: >
+    A competitor analysis report in Markdown format.
+    For each competitor, provide a dedicated section with sub-sections for Products, Pricing, Marketing, and a SWOT table.
+  agent: competitor_intelligence_specialist
+  output_file: 'competitor_analysis_report.md'
+
+sentiment_analysis_task:
+  description: >
+    Analyze customer sentiment regarding {product_name} and its main competitors.
+    Scour forums like Reddit, product review sites, and social media for discussions.
+    Identify the top 3 positive themes and top 3 negative themes mentioned by customers.
+  expected_output: >
+    A customer sentiment report in Markdown format.
+    The report must contain two lists: 'Positive Sentiment Themes' and 'Negative Sentiment Themes', each with 3 bullet points summarizing the findings.
+  agent: customer_sentiment_analyst
+  output_file: 'sentiment_analysis_report.md'
+
+strategy_synthesis_task:
+  description: >
+    Read and synthesize the market, competitor, and sentiment reports.
+    Create a comprehensive SWOT analysis for our product, {product_name}, based on the consolidated findings.
+    Develop a set of 3-5 actionable, high-level strategic recommendations for the marketing team.
+  expected_output: >
+    A final strategic marketing document in Markdown format.
+    The document must include a detailed SWOT analysis table for {product_name} and a section with a numbered list of 'Strategic Recommendations'.
+  agent: lead_strategy_synthesizer
+  context:
+    - market_research_task
+    - competitor_analysis_task
+    - sentiment_analysis_task
+  output_file: 'final_marketing_strategy.md'

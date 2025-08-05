@@ -1,0 +1,4 @@
+# System dependencies for MarketMind
+build-essential
+python3-dev 
+sqlite3
