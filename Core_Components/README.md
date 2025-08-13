@@ -41,6 +41,12 @@ These data collection agents must:
 
 The effective implementation of these data collection agents establishes the foundation upon which all other marketing and customer experience initiatives can build.
 
+## Prompt to start builing any of these agents
+'''
+Create a n8n agentic workflow with a LLM controller for the following;
+
+'''
+
 ## 1. Data Collection & Intelligence Agents
 
 ### Social Sentiment Agent
