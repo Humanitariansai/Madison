@@ -24,14 +24,6 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [460, 300]
-    },
-    {
-      "parameters": {
-        "workflowId": "strategy-consultant-workflow",
-        "sourceData": "define",
-        "define": {
-          "inputs": "={{ $json }}"
-        }
       },
       "id": "strategy-consultant",
       "name": "Strategy Consultant",
@@ -52,20 +44,6 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
       "position": [900, 200]
-    },
-    {
-      "parameters": {
-        "workflowId": "porters-trend-workflow",
-        "sourceData": "define",
-        "define": {
-          "inputs": "={{ $json }}"
-        }
-      },
-      "id": "porters-trend-analyst",
-      "name": "Porter's Trend Analyst",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [1120, 200]
     },
     {
       "parameters": {
@@ -110,14 +88,6 @@
       "typeVersion": 1,
       "position": [1780, 200]
     },
-    {
-      "parameters": {
-        "workflowId": "lead-synthesizer-workflow",
-        "sourceData": "define",
-        "define": {
-          "inputs": "={{ $json }}",
-          "all_reports": "={{ $('Strategy Consultant').item.json.report }}\n{{ $('USP Analyst').item.json.report }}\n{{ $('Porter\\'s Trend Analyst').item.json.report }}\n{{ $('Competitor Analyst').item.json.report }}\n{{ $('Customer Analyst').item.json.report }}\n{{ $('Devil\\'s Advocate').item.json.report }}"
-        }
       },
       "id": "lead-synthesizer",
       "name": "Lead Synthesizer",
@@ -181,17 +151,6 @@
         ]
       ]
     },
-    "USP Analyst": {
-      "main": [
-        [
-          {
-            "node": "Porter's Trend Analyst",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Porter's Trend Analyst": {
       "main": [
         [
@@ -214,16 +173,7 @@
         ]
       ]
     },
-    "Customer Analyst": {
-      "main": [
-        [
-          {
-            "node": "Devil's Advocate",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+
     },
     "Devil's Advocate": {
       "main": [
