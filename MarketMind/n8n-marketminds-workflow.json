@@ -1,0 +1,271 @@
+{
+  "name": "MarketMinds Multi-Agent Research",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "market-research",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "market-research-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input validation and preprocessing\nconst inputData = $input.first().json;\n\n// Validate required fields\nconst requiredFields = ['product_name', 'product_description', 'industry', 'geography', 'scale'];\nconst missingFields = requiredFields.filter(field => !inputData[field]);\n\nif (missingFields.length > 0) {\n  throw new Error(`Missing required fields: ${missingFields.join(', ')}`);\n}\n\n// Prepare inputs for all agents\nconst inputs = {\n  product_name: inputData.product_name,\n  product_description: inputData.product_description,\n  usp: inputData.usp || '',\n  usp_confidence: inputData.usp_confidence || 'Not Sure',\n  industry: inputData.industry,\n  geography: inputData.geography,\n  scale: inputData.scale,\n  competitor_focus: inputData.competitor_focus || '',\n  additional_context: inputData.additional_context || '',\n  refocus_mode: inputData.refocus_mode || 'false',\n  enable_charts: inputData.enable_charts !== false,\n\n  include_market_maps: inputData.include_market_maps !== false\n};\n\n// Add metadata\ninputs.analysis_id = `analysis_${Date.now()}`;\ninputs.start_time = new Date().toISOString();\n\nreturn {\n  json: inputs\n};"
+      },
+      "id": "input-processor",
+      "name": "Input Processor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "strategy-consultant-workflow",
+        "sourceData": "define",
+        "define": {
+          "inputs": "={{ $json }}"
+        }
+      },
+      "id": "strategy-consultant",
+      "name": "Strategy Consultant",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": "usp-analyst-workflow",
+        "sourceData": "define",
+        "define": {
+          "inputs": "={{ $json }}"
+        }
+      },
+      "id": "usp-analyst",
+      "name": "USP Analyst",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": "porters-trend-workflow",
+        "sourceData": "define",
+        "define": {
+          "inputs": "={{ $json }}"
+        }
+      },
+      "id": "porters-trend-analyst",
+      "name": "Porter's Trend Analyst",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": "competitor-analyst-workflow",
+        "sourceData": "define",
+        "define": {
+          "inputs": "={{ $json }}"
+        }
+      },
+      "id": "competitor-analyst",
+      "name": "Competitor Analyst",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": "customer-analyst-workflow",
+        "sourceData": "define",
+        "define": {
+          "inputs": "={{ $json }}"
+        }
+      },
+      "id": "customer-analyst",
+      "name": "Customer Analyst",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": "devils-advocate-workflow",
+        "sourceData": "define",
+        "define": {
+          "inputs": "={{ $json }}",
+          "context_reports": "={{ $('Strategy Consultant').item.json.report }}\n{{ $('USP Analyst').item.json.report }}\n{{ $('Porter\\'s Trend Analyst').item.json.report }}\n{{ $('Competitor Analyst').item.json.report }}\n{{ $('Customer Analyst').item.json.report }}"
+        }
+      },
+      "id": "devils-advocate",
+      "name": "Devil's Advocate",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": "lead-synthesizer-workflow",
+        "sourceData": "define",
+        "define": {
+          "inputs": "={{ $json }}",
+          "all_reports": "={{ $('Strategy Consultant').item.json.report }}\n{{ $('USP Analyst').item.json.report }}\n{{ $('Porter\\'s Trend Analyst').item.json.report }}\n{{ $('Competitor Analyst').item.json.report }}\n{{ $('Customer Analyst').item.json.report }}\n{{ $('Devil\\'s Advocate').item.json.report }}"
+        }
+      },
+      "id": "lead-synthesizer",
+      "name": "Lead Synthesizer",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all reports and metadata\nconst reports = {\n  research_plan: $('Strategy Consultant').item.json.report,\n  usp_analysis: $('USP Analyst').item.json.report,\n  porters_trend_analysis: $('Porter\\'s Trend Analyst').item.json.report,\n  competitor_analysis: $('Competitor Analyst').item.json.report,\n  customer_analysis: $('Customer Analyst').item.json.report,\n  risk_analysis: $('Devil\\'s Advocate').item.json.report,\n  final_report: $('Lead Synthesizer').item.json.report\n};\n\nconst metadata = {\n  analysis_id: $('Input Processor').item.json.analysis_id,\n  start_time: $('Input Processor').item.json.start_time,\n  end_time: new Date().toISOString(),\n  inputs: $('Input Processor').item.json\n};\n\n// Generate individual report files\nconst reportFiles = [];\nfor (const [key, content] of Object.entries(reports)) {\n  reportFiles.push({\n    filename: `${key}.md`,\n    content: content,\n    type: 'markdown'\n  });\n}\n\nreturn {\n  json: {\n    reports: reportFiles,\n    metadata: metadata,\n    success: true,\n    message: 'Market research analysis completed successfully'\n  }\n};"
+      },
+      "id": "report-collector",
+      "name": "Report Collector",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2440, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Input Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Processor": {
+      "main": [
+        [
+          {
+            "node": "Strategy Consultant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strategy Consultant": {
+      "main": [
+        [
+          {
+            "node": "USP Analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "USP Analyst": {
+      "main": [
+        [
+          {
+            "node": "Porter's Trend Analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Porter's Trend Analyst": {
+      "main": [
+        [
+          {
+            "node": "Competitor Analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Competitor Analyst": {
+      "main": [
+        [
+          {
+            "node": "Customer Analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer Analyst": {
+      "main": [
+        [
+          {
+            "node": "Devil's Advocate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Devil's Advocate": {
+      "main": [
+        [
+          {
+            "node": "Lead Synthesizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Synthesizer": {
+      "main": [
+        [
+          {
+            "node": "Report Collector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Report Collector": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {},
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
