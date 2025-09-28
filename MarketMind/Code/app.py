@@ -14,13 +14,13 @@ st.sidebar.header("Configuration")
 
 with st.sidebar:
     st.header("Product Details")
-    product_name_input = st.text_input("Product/Service Name", "QuantumLeap AI SaaS Platform")
-    product_description_input = st.text_area("Product/Service Description", "An AI-powered platform that automates data analysis and generates business intelligence reports for enterprise clients.")
+    product_name_input = st.text_input("")
+    product_description_input = st.text_area("", "")
 
     st.header("Market Details")
-    industry_input = st.text_input("Target Industry", "Technology, SaaS, Business Intelligence")
-    geo_input = st.text_input("Target Geography", "North America")
-    scale_input = st.selectbox("Company Scale", ["Bootstrapped", "Venture-Backed", "Publicly Traded", "Any"], index=1)
+    industry_input = st.text_input("")
+    geo_input = st.text_input("", "")
+    scale_input = st.selectbox("Company Scale", [], index=1)
     
     st.header("Analysis Focus")
     competitor_focus = st.text_input("Specific Competitor to Deep-Dive (Optional)", "", 
@@ -125,40 +125,9 @@ if submit_button:
                         env=refocus_env,
                     )
 
-                    if refocus_process.returncode != 0:
-                        st.error("An error occurred during refocus analysis. Details below:")
-                        st.code(refocus_process.stderr, language='bash')
-                    else:
-                        st.success("✅ Refocused Analysis Complete!")
+                    
                         
-                        # Display the refocused report
-                        refocus_report_file = 'refocused_market_analysis_report.md'
-                        try:
-                            with open(refocus_report_file, 'r', encoding='utf-8') as f:
-                                refocus_report_content = f.read()
-                            
-                            # Clean up the markdown content
-                            refocus_report_content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', refocus_report_content)
-                            
-                            st.header("📄 Refocused Analysis Report")
-                            with st.expander(f"View: {refocus_report_file}", expanded=True):
-                                if debug_mode:
-                                    st.code(refocus_report_content, language='markdown')
-                                else:
-                                    try:
-                                        st.markdown(refocus_report_content, unsafe_allow_html=False)
-                                    except Exception as e:
-                                        st.error(f"Error rendering markdown: {e}")
-                                        st.code(refocus_report_content, language='markdown')
-
-                            st.download_button(
-                                label=f"Download Refocused Report",
-                                data=refocus_report_content,
-                                file_name=refocus_report_file,
-                                mime='text/markdown',
-                            )
-                        except FileNotFoundError:
-                            st.warning(f"The refocused report '{refocus_report_file}' was not generated.")
+                        
             else:
                 st.warning("Please enter refocus context to continue.")
                 
