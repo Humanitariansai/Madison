@@ -1,136 +1,129 @@
-# Madison: Agentic Marketing & Branding Framework
+# 🧠 Content Agent Project (n8n Workflow)
 
-An open-source, agent-based AI marketing intelligence framework designed to transform branding, marketing, and advertising. Madison organizes specialized AI agents that collaborate under an orchestration layer to deliver cohesive, data-driven marketing solutions.
+This project automates the **content creation, evaluation, and engagement analysis** process using **n8n**, **OpenAI**, and **Reddit API**.  
+It streamlines how content is generated, scored, and tracked for performance — with automatic CSV reports and optional Discord notifications.
 
-## About the Framework
+---
 
-Madison (informally known as "Mads and Madison") is an open-source, agent-based AI marketing intelligence framework that integrates specialized AI agents to deliver comprehensive marketing solutions. The framework maps projects to agent layers, details core technologies, and outlines implementation strategies for data-driven marketing.
+## 📘 Project Summary
 
-This experimental project emphasizes collaborative learning and innovation, allowing marketers to build tailored solutions for branding, customer experience, content creation, and market research through an integrated agent ecosystem.
+The **Content Agent Workflow** combines two automation pipelines into one integrated system:
 
-## The Five Agent Layers
+1. **Content Generation & Scoring**
+   - Generates multiple creative content variants using OpenAI.
+   - Evaluates each variant based on language quality and brand tone.
+   - Filters approved and failed content automatically (no manual steps).
+   - Generates image prompt suggestions for approved variants.
 
-Madison organizes specialized AI agents into five collaborative layers, each addressing distinct marketing challenges:
+2. **Engagement Tracking & Analytics**
+   - Fetches Reddit posts weekly using keywords or subreddits.
+   - Calculates engagement (`upvotes + comments`) for each post.
+   - Flags top-performing posts as **best content**.
+   - Exports structured CSV reports for analytics and tracking.
 
-### 1. Intelligence Agents
-Gather and analyze data to provide actionable insights into market dynamics and consumer sentiment through reputation monitoring and trend analysis.
+---
 
-### 2. Content Agents
-Create, optimize, and distribute marketing materials across channels with consistent brand voice and multi-platform adaptation.
+## ⚙️ Main Features
 
-### 3. Research Agents
-Process data to uncover customer insights through automated survey analysis and synthetic persona development.
+| Feature | Description |
+|----------|-------------|
+| 🤖 AI Content Generation | Uses GPT models to produce marketing/ad content variants. |
+| ✅ Quality Evaluation | Automatically scores and approves high-quality content. |
+| 🖼️ Visual Concepts | Creates short image prompts for approved headlines. |
+| 📊 Engagement Analytics | Fetches and ranks Reddit posts by engagement score. |
+| 🧾 CSV Reporting | Exports results into downloadable CSV files. |
+| 🔔 Discord Alerts | Sends workflow updates to a team channel. |
+| 📅 Automation | Runs weekly on a schedule with no manual work required. |
 
-### 4. Experience Agents
-Enhance customer interactions through AI concierge systems and customer journey transformation.
+---
 
-### 5. Performance Agents
-Measure and optimize marketing outcomes through multi-armed bandit optimization and predictive analytics.
+## 🧩 Workflow Overview
 
-## Orchestration Layer
+```plaintext
+Step 1 → Receive Brand Input / Prompt  
+Step 2 → Generate Multiple Variants (OpenAI)  
+Step 3 → Quality Check & Scoring Logic  
+Step 4 → Filter Approved / Failed Variants  
+Step 5 → Approved → Visual Concepts → CSV Export  
+Step 6 → Failed → CSV Export for Manual Review  
+Step 7 → Reddit Fetch → Compute Engagement  
+Step 8 → Flag Best Content → Export Weekly CSV Reports  
+Step 9 → Discord Webhook Notification
+```
 
-Coordinates all agents through cross-project validation, dynamic resource allocation, and continuous learning.
+---
 
-## Core Technologies
+## 📦 Output Files
 
-The Madison framework leverages several technology categories for its operation:
+| File | Description |
+|------|--------------|
+| `approved_variants_<timestamp>.csv` | Approved AI-generated content variants |
+| `failed_variants_<timestamp>.csv` | Rejected or low-quality variants |
+| `flagged_post_stats_<timestamp>.csv` | Reddit posts with top engagement |
+| `unflagged_post_stats_<timestamp>.csv` | All other tracked Reddit posts |
 
-### Language Models & NLP
-For brand voice personalization, content generation, and conversational AI applications.
+---
 
-### Data Analysis Tools
-For survey analysis, segmentation, and preference modeling across research applications.
+## 🔧 Tools & Technologies
 
-### Multi-Armed Bandit Systems
-For continuous optimization and dynamic resource allocation in marketing campaigns.
+- **n8n** – Workflow automation platform  
+- **OpenAI API** – AI content generation  
+- **Reddit API** – Fetching public post data  
+- **Discord Webhook** – Sending alerts and summaries  
+- **JavaScript Nodes** – Custom scoring and filtering logic  
+- **CSV Export Nodes** – Data reporting and logs  
 
-### Knowledge Graph Systems
-For brand perception tracking and integrated market analysis.
+---
 
-The Madison orchestration layer ensures seamless coordination between agents, resolving conflicts, allocating resources dynamically, and enabling continuous learning from performance metrics.
+## 🚀 How to Use the Workflow
 
-## Key Projects
+1. **Open n8n**  
+   Start your local n8n instance or use the Desktop app.
 
-### Brand Voice Personalization
-Ensures consistent brand communication across all touchpoints through AI-powered voice analysis and parameter-efficient fine-tuning.
+2. **Import the Workflow**  
+   - Click **Import from File**  
+   - Select: `content_agent_full_workflow.json`
 
-### Multi-Armed Bandit Optimization
-Optimizes content and campaigns through continuous experimentation using Thompson sampling and contextual bandits.
+3. **Add Credentials**  
+   - OpenAI API Key → for text generation  
+   - Reddit API Credentials → for fetching posts  
+   - Discord Webhook URL → for notifications (optional)
 
-### AI Concierge Systems
-Deploys digital assistants for personalized customer experiences with conversational AI and journey mapping.
+4. **Run or Schedule the Workflow**  
+   - Click **Execute Workflow** for manual run  
+   - Or schedule weekly execution using the **Schedule Trigger** node.
 
-### MarketMind Research
-Conducts comprehensive secondary research on markets, competitors, and trends through systematic intelligence gathering.
+---
 
-## Implementation Features
+## 🧭 Example Use Case
 
-### Agent Orchestration
-Coordinates all agents through cross-project validation, dynamic resource allocation, and pattern recognition across the marketing ecosystem.
+This workflow can be used by marketing and AI teams to:
+- Automatically generate creative ad copy.
+- Identify which messages perform best in real-world social media.
+- Export structured engagement reports.
+- Keep teams updated automatically on Discord.
 
-### Open Source Framework
-Transparent, collaborative development model that enables customization and integration with existing marketing technology stacks.
+---
 
-### Real-Time Intelligence
-Continuous monitoring of market dynamics, social sentiment, and competitive landscapes with automated report generation.
+## 👤 Author
 
-### Scalable Architecture
-Supports cloud, on-premises, or hybrid deployment with API-based integration and human-in-the-loop validation.
+**Aneesh Koka**  
+AI Engineer | Workflow Automation & Intelligent Systems  
+📍 Boston, MA  
+🔗 [GitHub: aneeshkoka](https://github.com/aneeshkoka)
 
-## Framework Integration: Bellman & Popper
+---
 
-Madison integrates with two complementary frameworks to create a powerful ecosystem for intelligent, validated marketing:
+## 📁 Repository Structure
 
-### Bellman Framework Integration
+```
+n8n-content-agent-project/
+│
+├── content_agent_full_workflow.json   # Complete workflow export (Content + Reddit)
+├── README.md                          # Project documentation
+└── .gitignore                         # Optional exclusions (logs, temp files)
+```
 
-The Bellman framework enhances Madison by bringing classical reinforcement learning techniques to marketing applications:
+---
 
-#### Reinforcement Learning for Marketing Optimization
-- **Bandit Algorithms for Content**: Applies sophisticated multi-armed bandit techniques to optimize content across channels with mathematically rigorous exploration-exploitation balance
-- **RL-Powered Customer Journeys**: Models customer journeys as reinforcement learning environments to discover optimal interaction policies
-- **Value-Guided Decision Making**: Enables Madison's agents to make decisions based on learned value functions that predict long-term marketing impact
-- **Policy Learning for Brand Voice**: Learns adaptive policies for maintaining brand voice consistency while allowing contextual flexibility
-
-#### Practical Applications
-- Content A/B testing evolves into continuous optimization with Thompson sampling
-- Customer journey optimization becomes a sequential decision process with value function learning
-- Campaign resource allocation transforms into dynamic adaptation based on learned policies
-- Creative decisions benefit from uncertainty-aware exploration of promising directions
-
-### Popper Framework Integration
-
-The Popper framework enhances Madison by bringing computational skepticism and rigorous validation:
-
-#### Validated Marketing Intelligence
-- **Evidence-Based Claims**: Systematically evaluates marketing claims with balanced assessment of supporting and contradicting evidence
-- **Bias Detection**: Identifies and mitigates biases in marketing data, content, and strategies
-- **Falsification Testing**: Actively attempts to disprove marketing assumptions to build more robust strategies
-- **Causal Validation**: Verifies causal claims about marketing effectiveness through rigorous inference methods
-
-#### Practical Applications
-- Marketing claims undergo rigorous validation before driving strategy
-- Campaign performance predictions include explicit uncertainty quantification
-- Customer segmentation models are tested for statistical validity and robustness
-- Content effectiveness metrics are analyzed for potential confounding variables
-
-### Madison-Bellman-Popper Synergy
-
-The integration of these three frameworks creates a powerful system that combines:
-
-1. **Madison's marketing agent ecosystem** provides specialized intelligence, content, research, experience, and performance capabilities
-2. **Bellman's reinforcement learning methods** enable adaptive optimization and value-based decision making
-3. **Popper's validation approach** ensures marketing strategies are built on verified claims and robust evidence
-
-This tri-framework integration addresses the fundamental challenges in modern marketing:
-- Moving beyond static A/B testing to continuous, intelligent optimization
-- Ensuring marketing decisions are based on validated causal relationships, not just correlations
-- Balancing exploration of new approaches with exploitation of proven strategies
-- Quantifying uncertainty in marketing predictions to enable better risk management
-
-## Get Started
-
-Madison provides a comprehensive framework for AI-driven marketing intelligence, now enhanced with Bellman's reinforcement learning capabilities and Popper's validation methodologies. Explore the codebase, watch implementation demos, or join our collaborative development community.
-
-- [GitHub Repository](https://github.com/humanitariansai/madison)
-- [Project Website](https://www.humanitarians.ai/madison)
-- Email: info@humanitarians.ai
+> 💡 *This project demonstrates how n8n can combine AI content creation with automated performance tracking — closing the loop between generation, analysis, and continuous improvement.*

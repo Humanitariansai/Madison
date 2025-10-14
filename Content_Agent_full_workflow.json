@@ -1,0 +1,844 @@
+{
+  "name": "Madison_Content_Agent_MVP copy 1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "create-brief",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        64,
+        0
+      ],
+      "id": "7c71c7c6-c024-4b31-bb26-3731a733e0fc",
+      "name": "Webhook",
+      "webhookId": "54959110-5114-44b4-880e-a2c520d211aa"
+    },
+    {
+      "parameters": {
+        "options": {
+          "fileName": "/data/approved_{{$json.brief_id}}.csv",
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2208,
+        16
+      ],
+      "id": "48c1e5c5-1dd4-431f-91bd-8342e6113071",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const brief_id = $json.brief_id ?? 'UNKNOWN';\nconst tone = $json.tone ?? '';\nconst style = $json.style ?? '';\nconst reading = $json.reading_level ?? '';\nconst taboos = Array.isArray($json.taboos) ? $json.taboos.join(', ') : ($json.taboos ?? '');\n\nconst prompt = `\nReturn ONLY valid JSON (no code fences, no prose). Top-level must be an object:\n{\n  \"brief_id\": \"${brief_id}\",\n  \"variants\": [\n    { \"variant_id\": \"V1\", \"headline\": \"\", \"body\": \"\", \"cta\": \"\", \"image_prompt\": \"\", \"popper_pass\": true },\n    { \"variant_id\": \"V2\", \"headline\": \"\", \"body\": \"\", \"cta\": \"\", \"image_prompt\": \"\", \"popper_pass\": true },\n    { \"variant_id\": \"V3\", \"headline\": \"\", \"body\": \"\", \"cta\": \"\", \"image_prompt\": \"\", \"popper_pass\": true }\n  ]\n}\n\nConstraints:\n- Provide exactly 3 variants (V1..V3).\n- All string fields must be non-empty and trimmed.\n- Do not include Markdown, comments, trailing commas, or any text outside the JSON object.\n\nBrand voice:\ntone: ${tone}\nstyle: ${style}\nreading_level: ${reading}\ntaboos: ${taboos}\n`.trim();\n\nreturn { json: { prompt } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        0
+      ],
+      "id": "1abfe564-278f-4a16-8766-7ae364362a4c",
+      "name": "Prompt",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// MODE: Run Once for ALL Items\n// Purpose: take Generation output (any shape) → emit one item per variant\n\nconst results = [];\n\nfunction toText(x) {\n  // Coerce OpenAI content to a string\n  if (typeof x === 'string') return x;\n  if (Array.isArray(x)) {\n    // Some SDKs return content parts; join their text\n    return x.map(p => {\n      if (typeof p === 'string') return p;\n      if (p && typeof p === 'object') return p.text ?? '';\n      return '';\n    }).join('');\n  }\n  if (x && typeof x === 'object') {\n    // If it's already an object, stringify (we'll parse properly below)\n    try { return JSON.stringify(x); } catch { return ''; }\n  }\n  return '';\n}\n\nfunction stripFences(t) {\n  t = String(t);\n  const m = t.match(/```(?:json)?\\s*([\\s\\S]*?)```/i);\n  return m ? m[1].trim() : t.trim();\n}\nfunction firstJsonBlock(t) {\n  t = String(t);\n  const obj = t.match(/\\{[\\s\\S]*\\}/);\n  const arr = t.match(/\\[[\\s\\S]*\\]/);\n  return (obj?.[0] || arr?.[0] || '').trim();\n}\nfunction safeParse(t) {\n  if (t && typeof t === 'object') return t; // already parsed\n  if (!t || typeof t !== 'string') return null;\n  try { return JSON.parse(t); } catch { return null; }\n}\n\nfor (const it of items) {\n  const j = it.json || {};\n\n  // Try common locations for the assistant text\n  const candidates = [\n    j?.message?.content,\n    j?.choices?.[0]?.message?.content,\n    j?.data?.[0]?.content?.[0]?.text,\n    j // sometimes node already returns an object with variants\n  ];\n\n  let raw = '';\n  for (const c of candidates) {\n    if (c != null) {\n      raw = toText(c);\n      if (raw) break;\n    }\n  }\n\n  // Parse: handle code fences / object / array\n  let parsed = safeParse(raw);\n  if (!parsed) {\n    const cleaned = stripFences(raw);\n    const jsonStr = firstJsonBlock(cleaned);\n    parsed = safeParse(jsonStr);\n  }\n\n  // Normalize to { brief_id, variants: [...] }\n  let briefId = 'UNKNOWN';\n  let variants = [];\n  if (Array.isArray(parsed)) {\n    variants = parsed; // bare array of variants\n  } else if (parsed && typeof parsed === 'object') {\n    briefId = parsed.brief_id ?? 'UNKNOWN';\n    if (Array.isArray(parsed.variants)) variants = parsed.variants;\n  }\n\n  if (!variants.length) {\n    results.push({\n      json: {\n        brief_id: briefId,\n        variant_id: 'V0',\n        headline: '',\n        body: '',\n        cta: '',\n        image_prompt: '',\n        popper_pass: false,\n        created_at: new Date().toISOString(),\n        _warning: 'variants array empty or parse failed',\n        _raw_preview: String(raw).slice(0, 500)\n      }\n    });\n    continue;\n  }\n\n  variants.forEach((v, i) => {\n    results.push({\n      json: {\n        brief_id: briefId,\n        variant_id: v?.variant_id ?? `V${i + 1}`,\n        headline: v?.headline ?? '',\n        body: v?.body ?? '',\n        cta: v?.cta ?? '',\n        image_prompt: v?.image_prompt ?? '',\n        popper_pass: Boolean(v?.popper_pass),\n        created_at: new Date().toISOString()\n      }\n    });\n  });\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        0
+      ],
+      "id": "4130cc47-a520-43c7-bd85-c2daaea0b719",
+      "name": "Quality check"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5",
+          "mode": "list",
+          "cachedResultName": "GPT-5"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{$json.prompt}}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        864,
+        0
+      ],
+      "id": "8fa95bbc-df62-48eb-b695-7b4d68643c04",
+      "name": "Generation",
+      "credentials": {
+        "openAiApi": {
+          "id": "V40MelE5Ax8SsliK",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "fileName": "needs_review_{{$json.brief_id || \"UNKNOWN\"}}.csv",
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        208
+      ],
+      "id": "1afb0390-89d9-4145-ab25-51efafcf2006",
+      "name": "Convert to File1"
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "responseDataSource": "set",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Disposition",
+                "value": "=attachment; filename=needs_review_{{$json.brief_id || 'UNKNOWN'}}.csv"
+              },
+              {
+                "name": "Content-Type",
+                "value": "text/csv"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2464,
+        208
+      ],
+      "id": "e4c25f37-4819-443c-8430-494ca1930589",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const v = $json;\nconst brand = $json.brand_voice || {};\n\nreturn {\n  json: {\n    brief_id: v.brief_id || 'UNKNOWN',\n    variant_id: v.variant_id || '',\n    concept_prompt: `Create ${brand.visual_style || 'minimal'} visual for \"${v.headline}\".`\n      + (brand.palette ? ` Palette: ${brand.palette}.` : ''),\n    notes: v.popper_pass\n      ? 'Auto-approved for visual generation'\n      : 'Human review required before production',\n    created_at: new Date().toISOString(),\n  }\n};\n\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        16
+      ],
+      "id": "778b62f8-3e95-42b1-b3d7-37e1b4aa93fe",
+      "name": "Visual Concepts"
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "responseDataSource": "set",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "=Content-Disposition ",
+                "value": "= attachment; filename=approved_{{$json.brief_id || 'UNKNOWN'}}.csv"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2640,
+        16
+      ],
+      "id": "e57d97fb-f44f-4d87-9ae7-f107f8231d42",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ {\n  tone: \"Confident, plain-English, helpful\",\n  style: \"Short, skimmable, active voice\",\n  reading_level: \"Grade 8-9\",\n  taboos: [\"jargon\", \"absolute claims\", \"unverifiable superlatives\"],\n  lexicon: { users: \"customers\", AI: \"AI agents\" },\n  brand_colors: [\"#0B5FFF\", \"#111827\"],\n  visual_style: \"minimal, clean, lots of whitespace\"\n} }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        368,
+        0
+      ],
+      "id": "e506ae46-156e-45fd-a1c2-f710de0eb6c6",
+      "name": "brand voice"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -112,
+        672
+      ],
+      "id": "ae5c2bed-4d7a-4182-81b7-034bc05f3508",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.reddit.com/search.json?q=\"AI\"&limit=50&sort=new\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        96,
+        672
+      ],
+      "id": "b768c45a-d5c3-41f3-a262-6eda8865a4ff",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bb4d44d2-7525-4dd3-a653-e8ac0f082278",
+              "name": "platform",
+              "value": "reddit",
+              "type": "string"
+            },
+            {
+              "id": "dfb54f4b-1c26-4235-b6a8-9c241f4507f1",
+              "name": "=post_id",
+              "value": "={{$json.data.id}}",
+              "type": "string"
+            },
+            {
+              "id": "f2927c1f-8ced-484c-a60a-9a76ea4dc941",
+              "name": "=post_url",
+              "value": "={{\"https://www.reddit.com\" + $json.data.permalink}}  ",
+              "type": "string"
+            },
+            {
+              "id": "199d52af-7b2e-46fc-954a-3f8785415a97",
+              "name": "=author",
+              "value": "={{$json.data.author}}",
+              "type": "string"
+            },
+            {
+              "id": "af4e7fa4-9f41-46dc-8009-2a1cf59d9b20",
+              "name": "=published_at",
+              "value": "={{ new Date($json.data.created_utc * 1000).toISOString() }}",
+              "type": "string"
+            },
+            {
+              "id": "fe3f3809-3a40-42c8-9899-254b462a5b18",
+              "name": "=like_count",
+              "value": "={{ $json.data.ups ?? $json.data.score ?? 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "422718b1-fdd4-4337-afc6-5c76d90d7acd",
+              "name": "=share_count",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "8aa26368-296f-4ae3-b9d2-f268df7b82b7",
+              "name": "=view_count",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "63d26f19-f75a-4825-be69-aa2bd8dcac23",
+              "name": "=captions_text",
+              "value": "={{$json.data.title}}",
+              "type": "string"
+            },
+            {
+              "id": "156bc5b6-b437-4907-8454-aebb56bfc98b",
+              "name": "=comment_count",
+              "value": "={{ $json.data.num_comments ?? 0 }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        672
+      ],
+      "id": "dc49eba6-32a6-4a48-b06b-e76ff7b5c822",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "options": {
+          "delimiter": ",",
+          "fileName": "=Unflagged_post_stats_{{$now}}.csv",
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1072,
+        800
+      ],
+      "id": "ed794982-ccc3-4e1a-a1f9-ce2fcaf9dded",
+      "name": "Convert to File4",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data.children",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        288,
+        672
+      ],
+      "id": "a48bab2a-8d99-4ba8-86ec-b453890c6bfb",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "options": {
+          "delimiter": ",",
+          "fileName": "=Flagged_post_stats_{{$now}}.csv"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1072,
+        592
+      ],
+      "id": "514800fd-9046-4a93-ba41-b643807cba62",
+      "name": "Convert to File5"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Weekly \"best content\": Top-N by (ups + comments), with a small floor.\n// Works even if volumes are low and views are missing.\n\nconst N = 10;          // how many to flag for the weekly summary\nconst FLOOR = 3;       // minimum score required\n\n// normalize + compute score\nconst rows = items.map(i => {\n  const j = i.json;\n  const ups = Number(j.like_count ?? j.ups ?? j.score ?? 0);\n  const comments = Number(j.comment_count ?? j.num_comments ?? 0);\n  return {\n    ...j,\n    like_count: ups,\n    comment_count: comments,\n    engagement_score: ups + comments,\n    engagement_rate: 0, // Reddit rarely has views; keep for CSV, not used\n  };\n});\n\n// group by subreddit+keyword (so you get top-N per group). Remove if you want global top-N.\nconst keyOf = r => `${r.subreddit || 'ALL'}|${r.keyword || 'ALL'}`;\nconst groups = new Map();\nfor (const r of rows) {\n  const k = keyOf(r);\n  if (!groups.has(k)) groups.set(k, []);\n  groups.get(k).push(r);\n}\n\n// sort each group, flag top N above floor\nconst out = [];\nfor (const [, arr] of groups) {\n  arr.sort((a, b) => (b.engagement_score || 0) - (a.engagement_score || 0));\n  arr.forEach((r, idx) => {\n    r.best_content = idx < N && (r.engagement_score || 0) >= FLOOR;\n    out.push({ json: r });\n  });\n}\nreturn out;\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        672
+      ],
+      "id": "bea34efc-c7c2-4443-8513-38615e9be43d",
+      "name": "Compute Engagement"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.filter(i => i.json.best_content === true);\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        592
+      ],
+      "id": "c0a53b99-ca4b-4e7d-addb-d77323a420b7",
+      "name": "Filter Flagged"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.filter(i => i.json.best_content === false);\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        784
+      ],
+      "id": "90a1056f-aa46-477f-b432-afeee0acc43a",
+      "name": "Filter Unflagged"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- Balanced Scoring / Validation Logic ---\n// Adjusted to produce a realistic split of true & false\n\nreturn items.map(item => {\n  const j = item.json;\n\n  const headlineLen = (j.headline || \"\").length;\n  const bodyLen = (j.body || \"\").length;\n  const ctaLen = (j.cta || \"\").length;\n  const imageLen = (j.image_prompt || \"\").length;\n\n  // Weighted scoring\n  const score =\n    (headlineLen * 0.4) +\n    (bodyLen * 0.7) +\n    (ctaLen * 0.5) +\n    (imageLen * 0.2);\n\n  // New moderate threshold (tunable)\n  j.popper_pass = score >= 130; // around 100–130 works best\n\n  // Keep for inspection\n  j.quality_score = Math.round(score);\n\n  return { json: j };\n});\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        128
+      ],
+      "id": "925b2ffc-3ee7-4ec3-afa4-b9d295b89fd5",
+      "name": "Scoring Logic"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ec8c1321-2865-417f-a7ca-48ef4cb72e10",
+              "leftValue": "={{$json.popper_pass}}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        1744,
+        16
+      ],
+      "id": "77bb611d-83f5-47ad-9bc1-1c9d1dd4ed16",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fcb39fe6-d0ad-4e16-baad-f583e50bf5b5",
+              "leftValue": "={{$json.popper_pass}}",
+              "rightValue": "false",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        1744,
+        208
+      ],
+      "id": "78aa5105-9946-415c-9509-8b64b859f7ee",
+      "name": "Filter1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://discord.com/api/webhooks/1427074241030783068/sZVI2rmXc0KLoZyS7qK5iQNlp_vmmlQhHtlZ-KEJyycSgWshOjet-2UCSeLHqzcvAj8d",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "=\"🟢 **Regular Post Logged**\\nSubreddit: {{$json.subreddit}}\\nTitle: {{$json.title}}\\nEngagement Score: {{$json.engagement_score}}\\nComments: {{$json.comment_count}}\\n🔗 [View Post](https://reddit.com{{$json.permalink}})\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1280,
+        800
+      ],
+      "id": "7e1f248c-695f-4434-bcc8-86ae9abe4d55",
+      "name": "Discord1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://discord.com/api/webhooks/1427074241030783068/sZVI2rmXc0KLoZyS7qK5iQNlp_vmmlQhHtlZ-KEJyycSgWshOjet-2UCSeLHqzcvAj8d",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "=\"🚨 **High-Engagement Post Alert!**\\nSubreddit: {{$json.subreddit}}\\nTitle: {{$json.title}}\\nEngagement Score: {{$json.engagement_score}}\\nComments: {{$json.comment_count}}\\n🔗 [View Post](https://reddit.com{{$json.permalink}})\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1280,
+        592
+      ],
+      "id": "1d41d1ed-d893-4bfa-9fcd-ba8585751088",
+      "name": "Discord2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://discord.com/api/webhooks/1427074241030783068/sZVI2rmXc0KLoZyS7qK5iQNlp_vmmlQhHtlZ-KEJyycSgWshOjet-2UCSeLHqzcvAj8d",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "=\"✅ {{$json.headline}} — Auto-approved and ready for visual generation!\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2416,
+        16
+      ],
+      "id": "3030a161-daf2-48be-bc56-1ab8a0615632",
+      "name": "Discord3"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://discord.com/api/webhooks/1427074241030783068/sZVI2rmXc0KLoZyS7qK5iQNlp_vmmlQhHtlZ-KEJyycSgWshOjet-2UCSeLHqzcvAj8d",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "=\"⚠️  Failed quality check. Requires human review.\\n🕒 {{$now}}\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2208,
+        208
+      ],
+      "id": "fc219d09-f8b5-43e5-a969-14f07b2c82af",
+      "name": "Discord4"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "brand voice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Discord3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quality check": {
+      "main": [
+        [
+          {
+            "node": "Scoring Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generation": {
+      "main": [
+        [
+          {
+            "node": "Quality check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "Discord4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook1": {
+      "main": [
+        []
+      ]
+    },
+    "Visual Concepts": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "brand voice": {
+      "main": [
+        [
+          {
+            "node": "Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Compute Engagement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File4": {
+      "main": [
+        [
+          {
+            "node": "Discord1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Engagement": {
+      "main": [
+        [
+          {
+            "node": "Filter Flagged",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter Unflagged",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Flagged": {
+      "main": [
+        [
+          {
+            "node": "Convert to File5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Unflagged": {
+      "main": [
+        [
+          {
+            "node": "Convert to File4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scoring Logic": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Visual Concepts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter1": {
+      "main": [
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File5": {
+      "main": [
+        [
+          {
+            "node": "Discord2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord3": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord4": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "b2df08db-713d-493f-8507-da0e88a00a57",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1c72e4dc90934e9a21ed7386b0bdc61235b30eb575b437f5eb84c9071b905ddf"
+  },
+  "id": "L1sMsmXYNw28BQ3i",
+  "tags": []
+}
