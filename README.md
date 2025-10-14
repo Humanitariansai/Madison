@@ -107,10 +107,10 @@ This workflow can be used by marketing and AI teams to:
 
 ## 👤 Author
 
-**Aneesh Koka**  
+**Rohith Reddy Aleti**  
 AI Engineer | Workflow Automation & Intelligent Systems  
 📍 Boston, MA  
-🔗 [GitHub: aneeshkoka](https://github.com/aneeshkoka)
+🔗 [GitHub: Rohith Reddy Aleti]()
 
 ---
 
