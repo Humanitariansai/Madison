@@ -110,7 +110,7 @@ This workflow can be used by marketing and AI teams to:
 **Rohith Reddy Aleti**  
 AI Engineer | Workflow Automation & Intelligent Systems  
 📍 Boston, MA  
-🔗 [GitHub: Rohith Reddy Aleti]()
+🔗 [GitHub: Rohith Reddy Aleti](https://github.com/Rohith1820)
 
 ---
 
