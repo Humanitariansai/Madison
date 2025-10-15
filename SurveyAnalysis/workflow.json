@@ -1,0 +1,705 @@
+{
+    "name": "My workflow 5",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "madison/research/survey-v1",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "daf6ef26-78da-42a3-bc06-83571a63b886",
+        "name": "Survey Data Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1,
+        "position": [
+          -928,
+          208
+        ],
+        "webhookId": "61b34c5a-2943-4e42-88b9-252a891f3b73"
+      },
+      {
+        "parameters": {},
+        "id": "edbdc624-07b6-489d-8559-0c20d346ce41",
+        "name": "Daily Survey Check",
+        "type": "n8n-nodes-base.cron",
+        "typeVersion": 1,
+        "position": [
+          -928,
+          416
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "// Per-item validation/cleanup\nconst r = $json;\nconst errors = [];\n\nfunction num(v, name) {\n  const n = Number(v);\n  if (!Number.isFinite(n)) errors.push(`${name} must be a number`);\n  return Number.isFinite(n) ? n : null;\n}\nfunction txt(v) { return String(v ?? '').trim(); }\n\nconst out = {\n  respondent_id: txt(r.respondent_id),\n  age:           num(r.age, 'age'),\n  gender:        txt(r.gender).toUpperCase(),             // e.g., F/M\n  q1_satisfaction: num(r.q1_satisfaction, 'q1_satisfaction'),\n  q2_easeofuse:    num(r.q2_easeofuse, 'q2_easeofuse'),\n  q3_recommend:    num(r.q3_recommend, 'q3_recommend'),\n  _valid: errors.length === 0,\n  _errors: errors\n};\n\nreturn { json: out };\n"
+        },
+        "id": "4c925f1f-b1e9-4a59-b617-fbebbedba013",
+        "name": "Validate Survey Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -320,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "// Clean + normalize one CSV row\nconst r = $json;\n\n// helpers\nconst num = (v) => {\n  const n = Number(String(v ?? '').replace(/[^0-9.-]/g, ''));\n  return Number.isFinite(n) ? n : null;\n};\nconst txt = (v) =>\n  String(v ?? '')\n    .trim()\n    .replace(/^\"+|\"+$/g, '')   // drop wrapping quotes\n    .replace(/,+$/g, '');      // drop trailing commas\n\n// map fields (support both original CSV keys and cleaned keys)\nconst out = {\n  respondent_id: txt(r.respondent_id ?? r.RespondentID),\n  age:           num(r.age ?? r.Age),\n  gender:        txt(r.gender ?? r.Gender),\n  q1_satisfaction: num(r.q1_satisfaction ?? r.Q1_Satisfaction),\n  q2_easeofuse:    num(r.q2_easeofuse    ?? r.Q2_EaseOfUse),\n  q3_recommend:    num(r.q3_recommend    ?? r.Q3_Recommend),\n};\n\nreturn { json: out };\n"
+        },
+        "id": "066ff682-b2f6-4205-92db-690f44c8fe14",
+        "name": "Clean and Preprocess Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -96,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "// Build a compact payload for this single row\nconst r = $json;\n\nconst payload = {\n  respondent_id: r.respondent_id,\n  age: r.age,\n  gender: r.gender,\n  q1_satisfaction: r.q1_satisfaction,\n  q2_easeofuse: r.q2_easeofuse,\n  q3_recommend: r.q3_recommend\n};\n\n// If you want this node to output just the text you’ll drop into the LLM:\nconst prompt = `Analyze this survey response and return ONLY JSON:\n{\n  \"survey_analysis\": {\n    \"sentiment_analysis\": {\n      \"sentiment_distribution\": { \"positive\": number, \"neutral\": number, \"negative\": number }\n    },\n    \"nps\": number\n  }\n}\nResponse to analyze: ${JSON.stringify(payload)}\n`;\n\n// Return one object (not an array)\nreturn { json: { prompt, analysis_payload: payload } };\n"
+        },
+        "id": "ee2b9a81-3e74-4e76-88df-0baa6f8f58a0",
+        "name": "Prepare Analysis Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          112,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "// Mode: Run Once for Each Item\n\n// The analysis produced by the previous LLM call\nconst analysis = $json?.message?.content?.survey_analysis ?? {};\nconst nps = Number(analysis?.nps ?? 0);\nconst dist = analysis?.sentiment_analysis?.sentiment_distribution ?? {};\n\n// If you also want to pass through the original row (only if you stored it upstream)\nconst original = $json?.analysis_payload ?? $json?.original_data ?? null;\n\n// Build the segmentation prompt for the NEXT model\nconst prompt = `You are an expert segmentation agent.\nUse the analysis summary below to derive customer segments.\nReturn ONLY valid JSON with this schema:\n{\n  \"segments\": [\n    { \"label\": string, \"count\": number, \"rationale\": string }\n  ]\n}\n\nANALYSIS SUMMARY:\n${JSON.stringify({ nps, sentiment_distribution: dist, original }, null, 2)}`;\n\n// IMPORTANT: return a single object in per-item mode\nreturn {\n  json: {\n    prompt,\n    nps,\n    sentiment_distribution: dist,\n    original\n  }\n};\n"
+        },
+        "id": "d80eec21-c74b-43d6-a81c-10ce20c20a86",
+        "name": "Prepare Segmentation Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          560,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Combine all per-row analyses into one batch summary\nconst items = $input.all(); // [{json:...}, ...]\n\nlet pos = 0, neu = 0, neg = 0;\nlet npsSum = 0, npsCount = 0;\n\nfor (const { json } of items) {\n  const a = json?.message?.content?.survey_analysis ?? json?.survey_analysis ?? {};\n  const d = a?.sentiment_analysis?.sentiment_distribution ?? {};\n  pos += Number(d.positive ?? 0);\n  neu += Number(d.neutral  ?? 0);\n  neg += Number(d.negative ?? 0);\n  if (a?.nps != null) { npsSum += Number(a.nps); npsCount++; }\n}\n\nreturn [{\n  json: {\n    sentiment_distribution: { positive: pos, neutral: neu, negative: neg },\n    nps: npsCount ? Math.round(npsSum / npsCount) : null   // avg or use your own rule\n  }\n}];\n"
+        },
+        "id": "1a3434c8-11f6-44b0-9ab2-a09491033eff",
+        "name": "Aggregate and Enrich Results",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1040,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Get input safely\nconst first = $input.first() ?? {};\nconst results = first.json ?? first;\n\n// Read what we actually have\nconst dist = results.sentiment_distribution ?? {};\nconst pos = Number(dist.positive ?? 0);\nconst neu = Number(dist.neutral ?? 0);\nconst neg = Number(dist.negative ?? 0);\nconst total = pos + neu + neg;\n\n// Optional metadata if present; otherwise provide fallbacks\nconst meta = results.execution_metadata ?? {};\nconst totalAnalyzed = meta.total_responses_analyzed ?? total;\nconst processedAt = meta.processing_timestamp\n  ? new Date(meta.processing_timestamp).toLocaleString()\n  : new Date().toLocaleString();\n\n// Build Slack blocks\nconst blocks = [\n  { type: \"header\", text: { type: \"plain_text\", text: \"🔎 Survey Analysis Complete\" } },\n  {\n    type: \"section\",\n    fields: [\n      { type: \"mrkdwn\", text: `*Responses Analyzed:*\\n${totalAnalyzed}` },\n      { type: \"mrkdwn\", text: `*Analysis Time:*\\n${processedAt}` },\n      { type: \"mrkdwn\", text: `*NPS:*\\n${results.nps ?? \"N/A\"}` }\n    ]\n  },\n  {\n    type: \"section\",\n    fields: [\n      { type: \"mrkdwn\", text: `*Positive:*\\n${pos}` },\n      { type: \"mrkdwn\", text: `*Neutral:*\\n${neu}` },\n      { type: \"mrkdwn\", text: `*Negative:*\\n${neg}` }\n    ]\n  }\n];\n\n// Return for Slack node\nreturn [\n  {\n    json: {\n      text: \"Survey Analysis Complete\",\n      blocks\n    }\n  }\n];\n"
+        },
+        "id": "f2643643-6a97-42c6-89fb-261350947c0f",
+        "name": "Prepare Slack Notification",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1232,
+          416
+        ]
+      },
+      {
+        "parameters": {
+          "select": "channel",
+          "channelId": {
+            "__rl": true,
+            "value": "#survey-analysis",
+            "mode": "name"
+          },
+          "messageType": "block",
+          "blocksUi": "={{ $json.blocks }}",
+          "otherOptions": {}
+        },
+        "id": "f338061c-636d-4bc2-b026-5409855ce06c",
+        "name": "Send Slack Notification",
+        "type": "n8n-nodes-base.slack",
+        "typeVersion": 2,
+        "position": [
+          1424,
+          416
+        ],
+        "webhookId": "4f726e4e-4d9a-4d7d-a6db-27e008c4e15a"
+      },
+      {
+        "parameters": {
+          "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vQbXqyW8S6dKblDD0meDvpekTroxu1L-lzxgmV7SjWgeSmY_Vrgq8zxu7jHqBpYjJoWyhnLwUAKjndL/pub?gid=0&single=true&output=csv",
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "file"
+              }
+            }
+          }
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -720,
+          304
+        ],
+        "id": "bf74b160-584a-467e-abec-714dfb84a2d2",
+        "name": "HTTP Request",
+        "alwaysOutputData": false
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "n8n-nodes-base.extractFromFile",
+        "typeVersion": 1,
+        "position": [
+          -512,
+          304
+        ],
+        "id": "4c7becf4-25f7-455a-b367-0d7c638d5e7b",
+        "name": "Extract from File"
+      },
+      {
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "gpt-4o-mini",
+            "mode": "list",
+            "cachedResultName": "GPT-4O-MINI"
+          },
+          "messages": {
+            "values": [
+              {
+                "content": "={{$json.prompt}}\n"
+              }
+            ]
+          },
+          "jsonOutput": true,
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.openAi",
+        "typeVersion": 1.8,
+        "position": [
+          256,
+          304
+        ],
+        "id": "c9f4509a-f1e9-4f08-854b-96f0f600832e",
+        "name": "Message a model",
+        "credentials": {
+          "openAiApi": {
+            "id": "seryv2SOlzcnbWOC",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "gpt-4o-mini",
+            "mode": "list",
+            "cachedResultName": "GPT-4O-MINI"
+          },
+          "messages": {
+            "values": [
+              {
+                "content": "=You are a JSON API. Respond ONLY with valid JSON, no prose.\nSchema:\n{\n  \"survey_analysis\": {\n    \"sentiment_analysis\": {\n      \"sentiment_distribution\": {\n        \"positive\": number,\n        \"neutral\": number,\n        \"negative\": number\n      }\n    },\n    \"nps\": number\n  }\n}\n\n"
+              }
+            ]
+          },
+          "jsonOutput": true,
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.openAi",
+        "typeVersion": 1.8,
+        "position": [
+          704,
+          304
+        ],
+        "id": "782c7fcd-ae61-4506-885f-0939e2d3e952",
+        "name": "Message a model1",
+        "credentials": {
+          "openAiApi": {
+            "id": "seryv2SOlzcnbWOC",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "=http://grafana:3000/api/dashboards/db",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Authorization",
+                "value": "Bearer 1glsa_LQuof92n4STz4l7RIpD9MZ4HS3NVRbeW_68f06efe"
+              }
+            ]
+          },
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "dashboard",
+                "value": "={{$json.grafana_dashboard_config}}"
+              },
+              {
+                "name": "folderId",
+                "value": "={{0}}"
+              },
+              {
+                "name": "overwrite",
+                "value": "={{true}}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2096,
+          80
+        ],
+        "id": "2a124540-7a6e-4965-9ef2-5390dec64e0e",
+        "name": "Update Grafana Dashboards"
+      },
+      {
+        "parameters": {
+          "jsCode": "// ---------- Inputs & fallbacks ----------\nconst input = $input.first() ?? {};\nconst results = input.consolidatedResults ?? input.results ?? input;\n\n// If you fed the GET /api/datasources/name/mysql-test result directly into this node,\n// $json.uid will be present. Otherwise we fall back to env var.\nconst MYSQL_UID =\n  $json?.uid ||\n  $env.GRAFANA_MYSQL_UID ||        // set this in n8n env if you prefer\n  'PUT_YOUR_UID_HERE';             // last-resort hardcode (replace)\n\n// Optional (for links)\nconst GRAFANA_URL = $env.GRAFANA_URL || 'http://localhost:3000';\n\n// ---------- (Optional) derive a simple sentiment chart from previous analysis ----------\nconst viz = results.visualizations ?? results.charts ?? {};\nlet sentimentChart = viz.sentiment_chart ?? null;\n\nif (!sentimentChart) {\n  const sa = results.survey_analysis?.sentiment_analysis;\n  const dist = sa?.sentiment_distribution;\n  if (dist && (dist.positive ?? dist.neutral ?? dist.negative) !== undefined) {\n    sentimentChart = {\n      type: 'pie',\n      title: 'Sentiment distribution',\n      labels: ['positive', 'neutral', 'negative'],\n      values: [\n        Number(dist.positive ?? 0),\n        Number(dist.neutral ?? 0),\n        Number(dist.negative ?? 0),\n      ],\n    };\n  }\n}\n\n// ---------- Helpers to build panels ----------\nfunction statPanel({ title, sql, x, y, w = 12, h = 8, refId = 'A' }) {\n  return {\n    title,\n    type: 'stat',\n    gridPos: { w, h, x, y },\n    // Panel-level datasource (important)\n    datasource: { type: 'mysql', uid: MYSQL_UID },\n    options: { reduceOptions: { calcs: ['lastNotNull'], values: false } },\n    targets: [\n      {\n        refId,\n        rawQuery: true,\n        format: 'table',\n        // Target-level datasource (also important)\n        datasource: { type: 'mysql', uid: MYSQL_UID },\n        rawSql: sql,\n      },\n    ],\n  };\n}\n\nfunction piePanel({ title, sql, x, y, w = 12, h = 8, refId = 'A' }) {\n  return {\n    title,\n    type: 'piechart', // built-in pie panel in recent Grafana\n    gridPos: { w, h, x, y },\n    datasource: { type: 'mysql', uid: MYSQL_UID },\n    options: { legend: { displayMode: 'list' } },\n    targets: [\n      {\n        refId,\n        rawQuery: true,\n        format: 'table',\n        datasource: { type: 'mysql', uid: MYSQL_UID },\n        rawSql: sql,\n      },\n    ],\n  };\n}\n\n// ---------- SQL (match your schema) ----------\nconst sqlLatestNps = `\n  SELECT nps\n  FROM nps_scores\n  WHERE $__timeFilter(created_at)\n  ORDER BY created_at DESC\n  LIMIT 1;\n`;\n\n// Latest batch sentiment distribution (recommended)\nconst sqlSentimentLatestBatch = `\n  SELECT sentiment AS metric, \\`count\\` AS value\n  FROM sentiment_distribution\n  WHERE batch_id = (\n    SELECT batch_id\n    FROM nps_scores\n    ORDER BY created_at DESC\n    LIMIT 1\n  );\n`;\n// (Alternative by time window)\n// const sqlSentimentByTime = `\n//   SELECT sentiment AS metric, \\`count\\` AS value\n//   FROM sentiment_distribution\n//   WHERE $__timeFilter(created_at);\n// `;\n\n// ---------- Build panels ----------\nconst panels = [\n  piePanel({\n    title: 'Sentiment distribution',\n    sql: sqlSentimentLatestBatch,\n    x: 0, y: 0, w: 12, h: 8,\n  }),\n  statPanel({\n    title: 'Latest NPS',\n    sql: sqlLatestNps,\n    x: 12, y: 0, w: 12, h: 8,\n  }),\n];\n\n// ---------- Dashboard JSON ----------\nconst grafana_dashboard_config = {\n  title: results.title ?? 'Survey Dashboard',\n  time: { from: 'now-30d', to: 'now' },\n  timezone: 'browser',\n  schemaVersion: 38,\n  id: null,\n  uid: null,\n  version: 0,\n  panels,\n};\n\n// ---------- Output for HTTP POST /api/dashboards/db ----------\nconst post_body = {\n  dashboard: grafana_dashboard_config,\n  overwrite: true,  // set to false if you don't want to replace an existing one\n  folderId: 0\n};\n\nreturn [{\n  grafana_dashboard_config,\n  post_body,\n  // convenience link (Grafana will return the actual /d/<uid>/<slug> after POST)\n  dashboard_url_hint: `${GRAFANA_URL}/d`\n}];\n"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1920,
+          80
+        ],
+        "id": "a50eac17-cd75-4280-a550-feba4f345c9a",
+        "name": "Prepare Grafana Config"
+      },
+      {
+        "parameters": {
+          "jsCode": "function ts() { return new Date().toISOString().slice(0,19).replace('T',' '); }\n\nconst src = $input.first().json;                  // the single aggregated item\nconst batch_id = new Date().toISOString();        // keep ISO for linkage\nconst d = src.sentiment_distribution ?? {};\nconst nps = src.nps;\n\nconst rows = [\n  { kind: \"sentiment\", batch_id, sentiment: \"positive\", count: Number(d.positive || 0), created_at: ts() },\n  { kind: \"sentiment\", batch_id, sentiment: \"neutral\",  count: Number(d.neutral  || 0), created_at: ts() },\n  { kind: \"sentiment\", batch_id, sentiment: \"negative\", count: Number(d.negative || 0), created_at: ts() },\n  { kind: \"nps\",       batch_id, nps: (nps == null ? null : Number(nps)), created_at: ts() }\n];\n\nreturn rows.map(r => ({ json: r }));\n"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1232,
+          80
+        ],
+        "id": "c9de6d0d-2568-4c7f-a27e-898e09d74052",
+        "name": "Code"
+      },
+      {
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "loose",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.kind }}",
+                      "rightValue": "={{\"sentiment\"}}",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "id": "7c093fbd-e3f7-43e4-be7a-2d355e744c14"
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "Sentiment"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "loose",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "1c7d49ad-ebf4-49a2-978e-d2a357c9fae3",
+                      "leftValue": "={{ $json.kind }}",
+                      "rightValue": "={{\"nps\"}}",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals",
+                        "name": "filter.operator.equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "Nps_scroes"
+              }
+            ]
+          },
+          "looseTypeValidation": true,
+          "options": {}
+        },
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.2,
+        "position": [
+          1392,
+          80
+        ],
+        "id": "115e6901-0dc1-4039-97ce-c48e883d8f63",
+        "name": "Switch"
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "// Clean one CSV row -> tidy JSON\nconst r = $json;\n\n// helpers\nconst num = (v) => Number(String(v ?? '').replace(/[^0-9.-]/g, '') || 0);\nconst txt = (v) => String(v ?? '').replace(/[^A-Za-z]/g, '');\nconst id  = (v) => String(v ?? '').replace(/[^0-9]/g, '');\n\n// map fields (your CSV headers seen in Schema)\nreturn {\n  json: {\n    respondent_id: id(r.RespondentID),\n    age:            num(r.Age),\n    gender:         txt(r.Gender),\n    q1_satisfaction:num(r.Q1_Satisfaction),\n    q2_easeofuse:   num(r.Q2_EaseOfUse),\n    q3_recommend:   num(r.Q3_Recommend)\n  }\n};\n\n"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -384,
+          112
+        ],
+        "id": "ca831892-fd84-4101-bec7-9fdd03767443",
+        "name": "Code1"
+      },
+      {
+        "parameters": {
+          "table": {
+            "__rl": true,
+            "value": "sentiment_distribution",
+            "mode": "list",
+            "cachedResultName": "sentiment_distribution"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.mySql",
+        "typeVersion": 2.5,
+        "position": [
+          1568,
+          -32
+        ],
+        "id": "c4adbb33-1c00-4c17-afa5-f58cfc3cee51",
+        "name": "Insert Sentiment Distribution",
+        "credentials": {
+          "mySql": {
+            "id": "k6lsHCBbsFvnWSOX",
+            "name": "MySQL account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "table": {
+            "__rl": true,
+            "value": "nps_scores",
+            "mode": "list",
+            "cachedResultName": "nps_scores"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.mySql",
+        "typeVersion": 2.5,
+        "position": [
+          1568,
+          176
+        ],
+        "id": "002ceab7-7a81-46f2-84de-32c8134fdffd",
+        "name": "Insert NPS Score",
+        "credentials": {
+          "mySql": {
+            "id": "k6lsHCBbsFvnWSOX",
+            "name": "MySQL account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "url": "http://grafana:3000/api/datasources/name/mysql-test",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": ""
+              },
+              {
+                "name": "Accept",
+                "value": "application/json"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1776,
+          80
+        ],
+        "id": "a4545a79-0e50-4bfd-9fb4-65f3e6aa9068",
+        "name": "Fetch UID"
+      }
+    ],
+    "pinData": {},
+    "connections": {
+      "Survey Data Webhook": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Daily Survey Check": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Validate Survey Data": {
+        "main": [
+          [
+            {
+              "node": "Clean and Preprocess Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Clean and Preprocess Data": {
+        "main": [
+          [
+            {
+              "node": "Prepare Analysis Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Analysis Prompt": {
+        "main": [
+          [
+            {
+              "node": "Message a model",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Segmentation Prompt": {
+        "main": [
+          [
+            {
+              "node": "Message a model1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Aggregate and Enrich Results": {
+        "main": [
+          [
+            {
+              "node": "Prepare Slack Notification",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Code",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Slack Notification": {
+        "main": [
+          [
+            {
+              "node": "Send Slack Notification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request": {
+        "main": [
+          [
+            {
+              "node": "Extract from File",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Extract from File": {
+        "main": [
+          [
+            {
+              "node": "Code1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Message a model": {
+        "main": [
+          [
+            {
+              "node": "Prepare Segmentation Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Message a model1": {
+        "main": [
+          [
+            {
+              "node": "Aggregate and Enrich Results",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Update Grafana Dashboards": {
+        "main": [
+          []
+        ]
+      },
+      "Prepare Grafana Config": {
+        "main": [
+          [
+            {
+              "node": "Update Grafana Dashboards",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code": {
+        "main": [
+          [
+            {
+              "node": "Switch",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Switch": {
+        "main": [
+          [
+            {
+              "node": "Insert Sentiment Distribution",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Insert NPS Score",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code1": {
+        "main": [
+          [
+            {
+              "node": "Validate Survey Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Insert Sentiment Distribution": {
+        "main": [
+          [
+            {
+              "node": "Fetch UID",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Insert NPS Score": {
+        "main": [
+          [
+            {
+              "node": "Fetch UID",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch UID": {
+        "main": [
+          [
+            {
+              "node": "Prepare Grafana Config",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "active": false,
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "versionId": "86da94c8-165a-4855-9d90-e101ba7b3c9f",
+    "meta": {
+      "instanceId": "a2e93776a6561cf91088c56d633ce5983f60798351f141b409c407ebc82b6740"
+    },
+    "id": "0rYVOu83MhgY1FBj",
+    "tags": []
+  }
