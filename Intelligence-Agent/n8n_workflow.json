@@ -1,0 +1,1587 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://www.apple.com/newsroom/rss-feed.rss",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "name": "Fetch Apple Press Releases1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -7824,
+        4736
+      ],
+      "id": "1b33adce-5f38-4adf-8838-4716f249ee44"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Parse Apple Press XML1",
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        -7424,
+        4736
+      ],
+      "id": "403eae81-46d3-429b-8f8c-9240ab94420b"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Apple Press items with robust Atom format support\nconst items = [];\ntry {\n  const input = $input.first().json;\n\n  const processItem = (item) => {\n    const title = (item.title || '').trim();\n    const description = (item.description || item.content || '').replace(/<[^>]*>/g, '').trim();\n    const pubDate = item.pubDate || item.updated || new Date().toISOString();\n\n    let link = '';\n    if (Array.isArray(item.link) && item.link.length > 0) {\n      // The first link in the array is the main article URL.\n      link = item.link[0].href || '';\n    } else if (item.link && item.link.href) {\n      // Fallback for cases where 'link' is a single object.\n      link = item.link.href;\n    }\n\n    if (title && link) {\n      items.push({\n        json: {\n          title,\n          description,\n          pubDate,\n          link,\n          source: 'Apple Newsroom',\n          fullText: `${title}. ${description}`,\n          brand: 'Apple' // Hardcoded as this source is always Apple\n        }\n      });\n    }\n  };\n\n  // Check for Atom feed structure first, then RSS as a fallback.\n  if (input.feed?.entry) {\n    const entries = Array.isArray(input.feed.entry) ? input.feed.entry : [input.feed.entry];\n    entries.forEach(processItem);\n  } else if (input.rss?.channel?.item) {\n    const newsItems = Array.isArray(input.rss.channel.item) ? input.rss.channel.item : [input.rss.channel.item];\n    newsItems.forEach(processItem);\n  }\n\n} catch (error) {\n  console.error('Error extracting Apple Press items:', error.message);\n}\n\nreturn items;"
+      },
+      "name": "Extract Apple Press1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7216,
+        4736
+      ],
+      "id": "afc723b3-9446-48ae-8936-f12638023cdd"
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://news.google.com/rss/search?q=${encodeURIComponent($json.googleNewsQuery)}&hl=en-US&gl=US&ceid=US:en` }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "name": "Fetch Google News RSS1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -7792,
+        4176
+      ],
+      "id": "7110c6ba-5444-491e-aa11-5db3379e0615"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Parse Google News XML1",
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        -7584,
+        4176
+      ],
+      "id": "9969f789-5126-45f4-a438-ab794fd96219"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Google News items with better error handling\n\nconst items = [];\ntry {\n  const httpNodeName = 'Fetch Google News RSS1';\n\n  const channel = $input.first().json.rss?.channel;\n  \n  // Reference the input item of the HTTP Request node to get the brand context.\n  const brand = $(httpNodeName).item.json.name || 'Unknown';\n\n  if (brand === 'Unknown') {\n    console.error(`Warning: Could not find brand name from node '${httpNodeName}'. Check that the node name is correct.`);\n  }\n\n  if (channel && channel.item) {\n    const newsItems = Array.isArray(channel.item) ? channel.item : [channel.item];\n    for (const item of newsItems) {\n      const title = (item.title || '').trim();\n      const description = (item.description || '').replace(/<[^>]*>/g, '').trim();\n      const pubDate = item.pubDate || new Date().toISOString();\n      const link = (item.link || '').trim();\n      \n      if (title && link) {\n        items.push({\n          json: {\n            title,\n            description,\n            pubDate,\n            link,\n            source: 'Google News',\n            fullText: `${title}. ${description}`,\n            brand: brand // Use the correctly retrieved brand name\n          }\n        });\n      }\n    }\n  }\n} catch (error) {\n  console.error('Error extracting Google News:', error.message);\n}\nreturn items;"
+      },
+      "name": "Extract Google News1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7392,
+        4176
+      ],
+      "id": "b7469f7a-9eb7-49d3-817b-9d925d8306d0"
+    },
+    {
+      "parameters": {},
+      "name": "Merge All News2",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        -6624,
+        4272
+      ],
+      "id": "8cb5ae8e-8331-459f-b812-7ce8dfb30b6c"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM",
+          "mode": "list",
+          "cachedResultName": "ProcessedLinks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM/edit#gid=0"
+        },
+        "options": {}
+      },
+      "name": "Read Processed Links1",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -6400,
+        4448
+      ],
+      "id": "9ce463c1-0194-41ff-84e8-7eb256997324",
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cAmX81pWMtFb3fUI",
+          "name": "Google Sheets account"
+        }
+      },
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "name": "Combine Data1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -6160,
+        4224
+      ],
+      "id": "4dc9abd2-10a4-4d20-bb3e-e5b0431bf136"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Function to normalize titles for comparison\nfunction normalizeTitle(title) {\n  return title\n    .toLowerCase()\n    .replace(/[^a-z0-9]/g, '') // Remove special chars\n    .substring(0, 60); // Take first 60 chars\n}\n\n// Get all inputs - handling both single and multiple inputs\nconst allInputs = $input.all();\nconsole.log('Total inputs received:', allInputs.length);\n\n// Separate news items from sheet data\nlet newsItems = [];\nlet sheetData = [];\n\n// Process all inputs\nfor (const input of allInputs) {\n  // If it has a 'source' field, it's a news item\n  if (input.json && input.json.source) {\n    newsItems.push(input);\n  } \n  // If it has a 'link' field but no source, it's from the sheet\n  else if (input.json && input.json.link && !input.json.source) {\n    sheetData.push(input);\n  }\n  // Handle the case where we get news items in batch\n  else if (input.json && (input.json.title || input.json.description)) {\n    newsItems.push(input);\n  }\n}\n\nconsole.log(`Found ${newsItems.length} news items`);\nconsole.log(`Found ${sheetData.length} processed links from sheet`);\n\n// Create Sets for deduplication using both titles and links\nconst processedTitles = new Set();\nconst processedLinks = new Set();\n\nfor (const row of sheetData) {\n  if (row.json) {\n    // Add normalized title\n    if (row.json.title) {\n      const normalizedTitle = normalizeTitle(row.json.title);\n      processedTitles.add(normalizedTitle);\n    }\n    // Also keep link for exact match\n    if (row.json.link) {\n      processedLinks.add(row.json.link.trim());\n    }\n  }\n}\n\nconsole.log(`Found ${processedTitles.size} unique titles and ${processedLinks.size} unique links in sheet`);\n\n// Filter out already processed items\nconst newItems = [];\nconst seenInCurrentBatch = new Set(); // To avoid duplicates within current batch\n\nfor (const item of newsItems) {\n  const normalizedTitle = normalizeTitle(item.json.title || '');\n  const link = (item.json.link || '').trim();\n  \n  // Check if we've already seen this in the current batch\n  if (seenInCurrentBatch.has(normalizedTitle)) {\n    console.log(`Skipping duplicate in current batch: ${item.json.title}`);\n    continue;\n  }\n  \n  // Check both normalized title AND link\n  if (!processedTitles.has(normalizedTitle) && !processedLinks.has(link)) {\n    newItems.push(item);\n    seenInCurrentBatch.add(normalizedTitle); // Prevent duplicates in current batch\n  }\n}\n\nconsole.log(`Processing: ${newsItems.length} total items, ${processedTitles.size} already processed, ${newItems.length} new items`);\n\nif (newItems.length === 0) {\n  console.log('No new items to process');\n  // Return a single item indicating no new items\n  return [{\n    json: {\n      noNewItems: true,\n      message: \"No new items to process\"\n    }\n  }];\n}\n\nreturn newItems;"
+      },
+      "name": "Deduplicate with Sheets1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5936,
+        4224
+      ],
+      "id": "268966d4-5547-42b6-9beb-63ad23014f96"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Configuration: Apple as primary brand, others for competitor analysis\nconst PRIMARY_BRAND = 'Apple'; // Your main focus brand\n\nconst brands = [\n  {\n    name: 'Apple',\n    isPrimary: true,\n    rssUrl: 'https://www.apple.com/newsroom/rss-feed.rss',\n    googleNewsQuery: 'Apple+Inc+OR+AAPL+OR+iPhone+OR+iPad',\n    subreddits: ['apple', 'iphone', 'mac'],\n    competitors: ['Samsung', 'Google', 'Microsoft'],\n    keywords: ['iPhone', 'iPad', 'Mac', 'iOS', 'Tim Cook', 'Apple Watch', 'AirPods', 'Vision Pro', 'MacBook', 'iCloud']\n  },\n  // Competitors - for comparison only\n  {\n    name: 'Samsung',\n    isPrimary: false,\n    rssUrl: null,\n    googleNewsQuery: 'Samsung+Electronics+OR+Galaxy+OR+Samsung+Mobile',\n    subreddits: ['samsung', 'GalaxyS24', 'samsunggalaxy'],\n    competitors: ['Apple', 'Google', 'OnePlus'],\n    keywords: ['Galaxy', 'Samsung Phone', 'One UI', 'Exynos', 'Galaxy Watch', 'Galaxy Buds']\n  },\n  {\n    name: 'Google',\n    isPrimary: false,\n    rssUrl: null,\n    googleNewsQuery: 'Google+OR+GOOGL+OR+Pixel+OR+Android',\n    subreddits: ['google', 'googlepixel', 'Android'],\n    competitors: ['Apple', 'Microsoft', 'Amazon'],\n    keywords: ['Pixel', 'Android', 'Chrome', 'Sundar Pichai', 'Gemini', 'YouTube']\n  },\n  {\n    name: 'Microsoft',\n    isPrimary: false,\n    rssUrl: null,\n    googleNewsQuery: 'Microsoft+OR+MSFT+OR+Windows+OR+Surface',\n    subreddits: ['microsoft', 'Surface', 'windows'],\n    competitors: ['Apple', 'Google', 'Amazon'],\n    keywords: ['Windows', 'Surface', 'Office', 'Satya Nadella', 'Azure', 'Xbox', 'Copilot', 'Teams']\n  }\n];\n\n// Store primary brand in workflow static data for other nodes\nconst staticData = $getWorkflowStaticData('global');\nstaticData.primaryBrand = PRIMARY_BRAND;\n\nreturn brands.map(brand => ({ json: brand }));"
+      },
+      "name": "Multi-Brand Config1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -8256,
+        4176
+      ],
+      "id": "b47c6e87-5171-4193-81dc-57dadb5b06df"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "72be2fbf-db6d-47cc-b348-698ff492f45c",
+      "name": "Split In Batches1",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -7904,
+        4032
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: Brand configurations\n// Output: A flat list of items, each with one subreddit and its associated brand.\nconst brands = $input.all();\nconst subredditsToFetch = [];\n\nfor (const brandItem of brands) {\n  const brand = brandItem.json;\n  if (brand.subreddits && brand.subreddits.length > 0) {\n    for (const subreddit of brand.subreddits) {\n      subredditsToFetch.push({\n        json: {\n          brand: brand.name,\n          subreddit: subreddit\n        }\n      });\n    }\n  }\n}\n\nreturn subredditsToFetch;"
+      },
+      "name": "Prepare Subreddits",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7648,
+        4464
+      ],
+      "id": "5e8f8817-5d1e-4e48-b404-9d1f15e8a842"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.reddit.com/r/{{$json.subreddit}}/new.json?limit=10",
+        "options": {}
+      },
+      "name": "Fetch Reddit Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -7424,
+        4464
+      ],
+      "id": "e180bb8c-6085-4749-b0e0-2aaa5330c8b7"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: Raw API response from the HTTP Request node\n// Output: Formatted news items for the Merge node\nconst responseItem = $input.first();\nconst posts = [];\n\n// Get the brand/subreddit context by looking at the input of the previous node\n// This mirrors the pattern used in the Google News extractor\nconst context = $('Fetch Reddit Posts').item.json;\n\ntry {\n  const children = responseItem.json.data.children;\n  if (children && children.length > 0) {\n    for (const post of children) {\n      const data = post.data;\n      if (data.stickied) continue; // Skip pinned posts\n\n      const title = (data.title || '').trim();\n      const description = (data.selftext || '').substring(0, 1000).trim();\n      \n      posts.push({\n        json: {\n          title: title,\n          description: description,\n          pubDate: new Date(data.created_utc * 1000).toISOString(),\n          link: 'https://www.reddit.com' + data.permalink,\n          source: `Reddit r/${data.subreddit}`,\n          fullText: `${title}. ${description}`,\n          brand: context.brand, // Apply the brand from the context\n          redditScore: data.score || 0,\n          comments: data.num_comments || 0,\n          engagementScore: Math.min(1, ((data.score || 0) + (data.num_comments || 0) * 2) / 1000)\n        }\n      });\n    }\n  }\n} catch (error) {\n  console.error(`Error parsing Reddit data for r/${context.subreddit}:`, error.message);\n}\n\nreturn posts;"
+      },
+      "name": "Extract & Format Reddit Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7216,
+        4464
+      ],
+      "id": "32ddb33f-62d7-4944-ad8e-9152a92f6c98"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "9a497338-a99b-4719-b053-f317c016efe6",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -7904,
+        4400
+      ]
+    },
+    {
+      "parameters": {
+        "path": "apple-news-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -8688,
+        5152
+      ],
+      "id": "c7f422ba-d53f-42f9-b6c3-c3215cb11205",
+      "webhookId": "6d59e4e1-b73d-45ff-821f-c37671a2808b"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Parse XML1",
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        -7280,
+        5152
+      ],
+      "id": "a3bcfcee-8a22-4f76-95bf-32c83a3b2894"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.sourceType }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "rss",
+              "id": "afe543e9-b903-4cb5-89aa-d72487a02837"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9b4a598b-20cb-4677-954c-20e297efa845",
+      "name": "Filter Source Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -7728,
+        5168
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://news.google.com/rss/search?q=${encodeURIComponent($json.searchQuery)}&hl=en-US&gl=US&ceid=US:en` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "fc519b3a-d915-434f-9034-2c63ffa7a7bd",
+      "name": "Fetch Regulatory News1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -7504,
+        5184
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Regulatory sources for Apple Inc. specifically\nconst sources = [\n  {\n    name: 'Apple_Inc_Regulatory',\n    searchQuery: '\"Apple Inc\" regulatory compliance SEC FTC investigation fine penalty',\n    type: 'google_news',\n    sourceType: 'google_news',\n    category: 'regulatory',\n    region: 'US'\n  },\n  {\n    name: 'Apple_EU_DMA',\n    searchQuery: '\"Apple\" \"Digital Markets Act\" \"European Commission\" fine penalty compliance',\n    type: 'google_news',\n    sourceType: 'google_news',\n    category: 'antitrust',\n    region: 'EU'\n  },\n  {\n    name: 'Apple_Privacy_GDPR',\n    searchQuery: '\"Apple\" GDPR \"privacy fine\" \"data protection\" violation penalty',\n    type: 'google_news',\n    sourceType: 'google_news',\n    category: 'privacy',\n    region: 'Global'\n  },\n  {\n    name: 'Apple_Antitrust',\n    searchQuery: '\"Apple\" antitrust \"Department of Justice\" DOJ \"App Store\" monopoly lawsuit',\n    type: 'google_news',\n    sourceType: 'google_news',\n    category: 'antitrust',\n    region: 'US'\n  },\n  {\n    name: 'Apple_China_Compliance',\n    searchQuery: '\"Apple\" China regulatory compliance \"app removal\" censorship',\n    type: 'google_news',\n    sourceType: 'google_news',\n    category: 'market_access',\n    region: 'China'\n  }\n];\n\nreturn sources.map(source => ({ json: source }));"
+      },
+      "id": "1ea379ef-db3d-49df-92c0-74c9e0fba83f",
+      "name": "Regulatory Sources Config1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7968,
+        5168
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "Merge Data Streams",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -6784,
+        5232
+      ],
+      "id": "3bc37034-ccfa-422a-b0ec-10b2952a244e"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Compliance",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.id }}",
+            "title": "={{ $json.title }}",
+            "description": "={{ $json.description }}",
+            "link": "={{ $json.link }}",
+            "pubDate": "={{ $json.pubDate }}",
+            "source": "={{ $json.source }}",
+            "riskLevel": "={{ $json.riskLevel }}",
+            "riskScore": "={{ $json.riskScore }}",
+            "specificRegulation": "={{ $json.specificRegulation }}",
+            "requiredAction": "={{ $json.requiredAction }}",
+            "urgencyLevel": "={{ $json.urgencyLevel }}",
+            "keyRisks": "={{ $json.keyRisks }}",
+            "impactedAreas": "={{ $json.impactedAreas }}",
+            "estimatedFineRisk": "={{ $json.estimatedFineRisk }}",
+            "complianceSummary": "={{ $json.complianceSummary }}",
+            "analyzedAt": "={{ $json.analyzedAt }}",
+            "aiModel": "={{ $json.aiModel }}",
+            "workflowRun": "={{ $json.workflowRun }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "name": "Save to Compliance Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -5776,
+        5232
+      ],
+      "id": "6a7184ab-bd3d-4b64-9d1f-dede38d64183",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cAmX81pWMtFb3fUI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract regulatory content with better error handling and debugging\nconst items = [];\nconst input = $input.first().json;\n\nconsole.log('Input structure:', JSON.stringify(Object.keys(input), null, 2));\n\nconst simpleHash = (str) => {\n  let hash = 0;\n  for (let i = 0; i < str.length; i++) {\n    const char = str.charCodeAt(i);\n    hash = ((hash << 5) - hash) + char;\n    hash = hash & hash;\n  }\n  return Math.abs(hash).toString(36).substring(0, 12);\n};\n\n// Get context from the previous node to understand the source\nlet sourceContext = 'Unknown';\ntry {\n  const prevNode = $('Fetch Regulatory News1').item.json;\n  sourceContext = prevNode.name || 'Regulatory Feed';\n  console.log('Source context:', sourceContext);\n} catch (e) {\n  console.log('Could not get source context');\n}\n\n// Process RSS items with multiple structure checks\nlet newsItems = [];\n\n// Check for standard RSS structure\nif (input.rss?.channel?.item) {\n  newsItems = Array.isArray(input.rss.channel.item) ? \n    input.rss.channel.item : [input.rss.channel.item];\n  console.log(`Found ${newsItems.length} items in rss.channel.item`);\n} \n// Check for RSS without channel wrapper\nelse if (input.rss?.item) {\n  newsItems = Array.isArray(input.rss.item) ? \n    input.rss.item : [input.rss.item];\n  console.log(`Found ${newsItems.length} items in rss.item`);\n}\n// Check for direct item array\nelse if (input.item) {\n  newsItems = Array.isArray(input.item) ? \n    input.item : [input.item];\n  console.log(`Found ${newsItems.length} items in root.item`);\n}\n// Check if input itself is an array\nelse if (Array.isArray(input)) {\n  newsItems = input;\n  console.log(`Found ${newsItems.length} items as array`);\n}\n\n// Process found items\nif (newsItems.length > 0) {\n  newsItems.forEach((item, index) => {\n    try {\n      // Extract with fallbacks for different field names\n      const title = (\n        item.title || \n        item.headline || \n        item.name || \n        `Regulatory Update ${index + 1}`\n      ).toString().trim();\n      \n      const description = (\n        item.description || \n        item.summary || \n        item.content || \n        item.text || \n        ''\n      ).toString().replace(/<[^>]*>/g, '').trim();\n      \n      const link = (\n        item.link || \n        item.url || \n        item.guid || \n        ''\n      ).toString().trim();\n      \n      const pubDate = item.pubDate || \n        item.publishedDate || \n        item.published || \n        item.date || \n        new Date().toISOString();\n      \n      // Only add if we have at least a title or description\n      if (title || description) {\n        const processedItem = {\n          id: simpleHash((link || title) + Date.now() + index),\n          title: title.substring(0, 200),\n          description: description.substring(0, 500),\n          link: link || 'N/A',\n          pubDate: pubDate,\n          source: `Google News - ${sourceContext}`,\n          category: 'compliance',\n          region: 'Global',\n          fullText: `${title}. ${description}`.substring(0, 1000)\n        };\n        \n        items.push({ json: processedItem });\n        console.log(`Added item ${index + 1}: ${title.substring(0, 50)}...`);\n      }\n    } catch (itemError) {\n      console.error(`Error processing item ${index}:`, itemError.message);\n    }\n  });\n} else {\n  console.log('No news items found in any expected structure');\n  console.log('Full input structure:', JSON.stringify(input, null, 2).substring(0, 500));\n}\n\n// Always return at least one item for downstream processing\nif (items.length === 0) {\n  console.log('No items extracted, returning placeholder');\n  items.push({\n    json: {\n      id: 'placeholder-' + Date.now(),\n      title: 'Regulatory Monitoring Active',\n      description: 'System is monitoring for Apple Inc. compliance issues but no new articles were found in this batch',\n      link: 'N/A',\n      pubDate: new Date().toISOString(),\n      source: 'System',\n      category: 'info',\n      region: 'Global',\n      fullText: 'Monitoring active - no new regulatory news found'\n    }\n  });\n} else {\n  console.log(`Successfully extracted ${items.length} regulatory items`);\n}\n\nreturn items;"
+      },
+      "name": "Extract Content1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7072,
+        5152
+      ],
+      "id": "0cd69d47-c437-4306-9ea1-d5b70e0d1de6"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1473024727,
+          "mode": "list",
+          "cachedResultName": "Compliance",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM/edit#gid=1473024727"
+        },
+        "options": {}
+      },
+      "name": "Read Existing Articles1",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -7888,
+        5504
+      ],
+      "id": "d8d518d0-ebb9-40ff-8f6c-4cfdb7027563",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cAmX81pWMtFb3fUI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Improved deduplication that properly handles all scenarios\nconst allItems = $input.all();\nconsole.log(`Total items received: ${allItems.length}`);\n\n// Debug: Log what we received\nallItems.forEach((item, index) => {\n  console.log(`Item ${index}: source=${item.json.source}, hasAnalyzedAt=${!!item.json.analyzedAt}, hasRiskLevel=${!!item.json.riskLevel}`);\n});\n\n// Separate new articles from existing ones\nconst newArticles = [];\nconst existingArticles = [];\n\nallItems.forEach(item => {\n  // Check if this is a new article from Extract Content\n  const isNewArticle = item.json.source && \n    (item.json.source.includes('Google News') || \n     item.json.source.includes('Regulatory') ||\n     item.json.source === 'System') &&\n    !item.json.analyzedAt && \n    !item.json.riskLevel;\n    \n  if (isNewArticle) {\n    newArticles.push(item);\n  } else if (item.json.analyzedAt || item.json.row_number || item.json.riskLevel) {\n    // Items that have been analyzed or are from the sheet\n    existingArticles.push(item);\n  }\n});\n\nconsole.log(`New articles: ${newArticles.length}, Existing articles: ${existingArticles.length}`);\n\n// IMPORTANT: Handle first run or empty sheet scenario\nif (existingArticles.length === 0) {\n  console.log('No existing articles found - this appears to be first run or empty sheet');\n  \n  if (newArticles.length > 0) {\n    console.log('Processing all new articles');\n    return newArticles.map(article => ({\n      json: {\n        ...article.json,\n        isNew: true,\n        processedAt: new Date().toISOString()\n      }\n    }));\n  } else {\n    console.log('No articles to process at all');\n    // Still return something processable instead of stopping\n    return [{\n      json: {\n        id: 'init-' + Date.now(),\n        title: 'Initial Run - No Articles Found',\n        description: 'No regulatory articles were found in this run',\n        link: 'N/A',\n        pubDate: new Date().toISOString(),\n        source: 'System',\n        category: 'info',\n        region: 'Global',\n        fullText: 'Initial run with no articles',\n        isNew: true,\n        processedAt: new Date().toISOString()\n      }\n    }];\n  }\n}\n\n// Create lookup sets for deduplication\nconst existingIds = new Set();\nconst existingLinks = new Set();\nconst existingTitles = new Set();\n\nexistingArticles.forEach(item => {\n  if (item.json.id && item.json.id !== 'N/A') existingIds.add(item.json.id);\n  if (item.json.link && item.json.link !== 'N/A') existingLinks.add(item.json.link);\n  if (item.json.title) {\n    const normalizedTitle = item.json.title.toLowerCase().trim();\n    if (normalizedTitle && normalizedTitle !== 'n/a') {\n      existingTitles.add(normalizedTitle);\n    }\n  }\n});\n\nconsole.log(`Existing: ${existingIds.size} IDs, ${existingLinks.size} links, ${existingTitles.size} titles`);\n\n// Filter duplicates\nconst uniqueArticles = [];\nlet duplicateCount = 0;\n\nnewArticles.forEach(article => {\n  const data = article.json;\n  const titleLower = (data.title || '').toLowerCase().trim();\n  \n  // Check for duplicates\n  const isDuplicate = existingIds.has(data.id) || \n    (data.link !== 'N/A' && existingLinks.has(data.link)) || \n    (titleLower && existingTitles.has(titleLower));\n  \n  if (!isDuplicate) {\n    uniqueArticles.push({\n      json: {\n        ...data,\n        isNew: true,\n        processedAt: new Date().toISOString()\n      }\n    });\n    console.log(`Added unique article: ${data.title}`);\n  } else {\n    duplicateCount++;\n    console.log(`Duplicate found: ${data.title}`);\n  }\n});\n\nconsole.log(`Unique articles: ${uniqueArticles.length}, Duplicates removed: ${duplicateCount}`);\n\n// ALWAYS return something that can be processed\nif (uniqueArticles.length === 0) {\n  console.log('No unique articles found after deduplication');\n  \n  // If we have new articles but they're all duplicates, still return a status item\n  if (newArticles.length > 0) {\n    return [{\n      json: {\n        id: 'status-' + Date.now(),\n        title: 'All Articles Already Processed',\n        description: `Found ${newArticles.length} articles but all were duplicates`,\n        link: 'N/A',\n        pubDate: new Date().toISOString(),\n        source: 'System',\n        category: 'info',\n        region: 'Global',\n        fullText: `Deduplication complete: ${duplicateCount} duplicates found`,\n        isNew: false,\n        isDuplicate: true,\n        processedAt: new Date().toISOString()\n      }\n    }];\n  } else {\n    // No new articles at all\n    return [{\n      json: {\n        id: 'status-' + Date.now(),\n        title: 'No New Regulatory Articles',\n        description: 'No new regulatory articles found in this scan',\n        link: 'N/A',\n        pubDate: new Date().toISOString(),\n        source: 'System',\n        category: 'info',\n        region: 'Global',\n        fullText: 'Monitoring continues',\n        isNew: false,\n        processedAt: new Date().toISOString()\n      }\n    }];\n  }\n}\n\n// Return unique articles for processing\nreturn uniqueArticles;"
+      },
+      "name": "Deduplicate Articles1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6576,
+        5232
+      ],
+      "id": "0b862738-0bce-4c3a-9e64-51c5afd819b0"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.isDuplicate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              },
+              "id": "6df7bf9a-3b96-41e6-989f-7a6a8ae44774"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Check New Articles1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -6384,
+        5216
+      ],
+      "id": "5e670831-c929-43af-a89d-60b3ea48dfcc"
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o-mini",
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a regulatory compliance analyst specializing in technology companies. Analyze the following article for compliance risks and regulatory implications for Apple Inc. Provide your analysis in JSON format with these fields: - riskLevel: CRITICAL, HIGH, MEDIUM, or LOW - riskScore: 0-100 - specificRegulation: The main regulation involved (GDPR, DMA, SEC, FTC, etc.) - requiredAction: What Apple should do - urgencyLevel: IMMEDIATE, HIGH, MEDIUM, LOW - keyRisks: Array of main risk factors - impactedAreas: Array of business areas affected - estimatedFineRisk: Potential fine amount if applicable - complianceSummary: Brief summary of compliance implicationsYou are a regulatory compliance analyst specializing in technology companies. Analyze the following article for compliance risks and regulatory implications for Apple Inc. Provide your analysis in JSON format with these fields: - riskLevel: CRITICAL, HIGH, MEDIUM, or LOW - riskScore: 0-100 - specificRegulation: The main regulation involved (GDPR, DMA, SEC, FTC, etc.) - requiredAction: What Apple should do - urgencyLevel: IMMEDIATE, HIGH, MEDIUM, LOW - keyRisks: Array of main risk factors - impactedAreas: Array of business areas affected - estimatedFineRisk: Potential fine amount if applicable - complianceSummary: Brief summary of compliance implications"
+            },
+            {
+              "content": "={{ `Article Title: ${$json.title}\\n\\nContent: ${$json.fullText}\\n\\nSource: ${$json.source}\\nDate: ${$json.pubDate}` }}"
+            }
+          ]
+        },
+        "options": {},
+        "requestOptions": {}
+      },
+      "name": "OpenAI Sentiment",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        -6192,
+        5120
+      ],
+      "id": "8306f7ff-29dd-4104-92fb-586bf6d02f7a",
+      "credentials": {
+        "openAiApi": {
+          "id": "MhNTv8W1V8DdFQvZ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process ALL articles with AI analysis - Fixed for actual OpenAI output structure\nconst articles = $('Check New Articles1').all();\nconst aiResponses = $('OpenAI Sentiment').all();\nconst processedRecords = [];\n\nconsole.log(`Processing ${articles.length} articles with ${aiResponses.length} AI responses`);\n\n// Process each article with its corresponding AI analysis\nfor (let i = 0; i < articles.length; i++) {\n  const article = articles[i].json;\n  let aiAnalysis = {};\n  let analysisStatus = 'success';\n  \n  console.log(`Processing article ${i + 1}: ${article.title}`);\n  \n  try {\n    // Get the corresponding AI response - handle the actual OpenAI structure\n    if (aiResponses[i] && aiResponses[i].json) {\n      let aiData = aiResponses[i].json;\n      \n      // OpenAI returns an array with index and message\n      if (Array.isArray(aiData)) {\n        // If it's an array, get the first item\n        aiData = aiData[0];\n      }\n      \n      // Now extract the content from the message\n      if (aiData.message?.content) {\n        const content = aiData.message.content;\n        console.log(`Raw AI content for article ${i + 1}:`, content.substring(0, 200));\n        \n        // Clean and parse the JSON from the content\n        // Remove markdown code blocks if present\n        const cleanJson = content\n          .replace(/```json\\n?/g, '')\n          .replace(/```\\n?/g, '')\n          .trim();\n        \n        aiAnalysis = JSON.parse(cleanJson);\n        console.log(`Successfully parsed AI analysis for article ${i + 1}`);\n      } else {\n        throw new Error('No message content in AI response');\n      }\n    } else {\n      throw new Error('No AI response for this article');\n    }\n  } catch (e) {\n    console.error(`Failed to parse AI response for article ${i + 1}: ${article.title}`, e.message);\n    analysisStatus = 'failed';\n    \n    // Use default values based on article content\n    const titleLower = (article.title || '').toLowerCase();\n    const descLower = (article.description || '').toLowerCase();\n    const fullText = titleLower + ' ' + descLower;\n    \n    // Estimate risk based on keywords\n    let riskLevel = 'LOW';\n    let riskScore = 25;\n    \n    if (fullText.includes('fine') || fullText.includes('penalty') || fullText.includes('violation')) {\n      riskLevel = 'HIGH';\n      riskScore = 75;\n    } else if (fullText.includes('investigation') || fullText.includes('compliance') || fullText.includes('regulatory')) {\n      riskLevel = 'MEDIUM';\n      riskScore = 50;\n    }\n    \n    aiAnalysis = {\n      riskLevel: riskLevel,\n      riskScore: riskScore,\n      specificRegulation: 'Unknown - Manual Review Required',\n      requiredAction: 'Review article manually for compliance implications',\n      urgencyLevel: 'MEDIUM',\n      keyRisks: ['Unable to analyze - manual review required'],\n      impactedAreas: ['To be determined'],\n      estimatedFineRisk: 'Unable to estimate',\n      complianceSummary: 'Automated analysis failed - manual review of this article is recommended'\n    };\n  }\n  \n  // Create record for Google Sheets with all required fields\n  const complianceRecord = {\n    // Article fields - ensure all are strings for Sheets\n    id: String(article.id || `article-${Date.now()}-${i}`),\n    title: String(article.title || 'No title').substring(0, 500),\n    description: String(article.description || '').substring(0, 1000),\n    link: String(article.link || 'N/A'),\n    pubDate: String(article.pubDate || new Date().toISOString()),\n    source: String(article.source || 'Unknown'),\n    \n    // AI Analysis fields - ensure proper formatting for Sheets\n    riskLevel: String(aiAnalysis.riskLevel || 'UNKNOWN'),\n    riskScore: Number(aiAnalysis.riskScore) || 0,\n    specificRegulation: String(aiAnalysis.specificRegulation || 'Unknown'),\n    requiredAction: String(aiAnalysis.requiredAction || 'Review required'),\n    urgencyLevel: String(aiAnalysis.urgencyLevel || 'LOW'),\n    keyRisks: Array.isArray(aiAnalysis.keyRisks) ? \n      aiAnalysis.keyRisks.join('; ') : \n      String(aiAnalysis.keyRisks || 'None identified'),\n    impactedAreas: Array.isArray(aiAnalysis.impactedAreas) ? \n      aiAnalysis.impactedAreas.join('; ') : \n      String(aiAnalysis.impactedAreas || 'None identified'),\n    estimatedFineRisk: String(aiAnalysis.estimatedFineRisk || 'Not estimated'),\n    complianceSummary: String(aiAnalysis.complianceSummary || 'No summary available'),\n    \n    // Metadata\n    analyzedAt: new Date().toISOString(),\n    aiModel: 'gpt-4o-mini',\n    analysisStatus: analysisStatus,\n    workflowRun: new Date().toISOString().split('T')[0]\n  };\n  \n  processedRecords.push({ json: complianceRecord });\n  console.log(`Created compliance record for: ${complianceRecord.title}`);\n}\n\nconsole.log(`Successfully processed ${processedRecords.length} compliance records`);\n\n// Ensure we always return something\nif (processedRecords.length === 0) {\n  console.log('No records were processed, creating placeholder');\n  return [{\n    json: {\n      id: 'no-records-' + Date.now(),\n      title: 'No compliance records to process',\n      description: 'No data available for processing',\n      link: 'N/A',\n      pubDate: new Date().toISOString(),\n      source: 'System',\n      riskLevel: 'NONE',\n      riskScore: 0,\n      specificRegulation: 'N/A',\n      requiredAction: 'None',\n      urgencyLevel: 'NONE',\n      keyRisks: 'None',\n      impactedAreas: 'None',\n      estimatedFineRisk: '0',\n      complianceSummary: 'No compliance issues detected',\n      analyzedAt: new Date().toISOString(),\n      aiModel: 'gpt-4o-mini',\n      analysisStatus: 'no_data',\n      workflowRun: new Date().toISOString().split('T')[0]\n    }\n  }];\n}\n\nreturn processedRecords;"
+      },
+      "name": "Merge Analysis Results1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5984,
+        5152
+      ],
+      "id": "0c08cf00-08f1-445e-81f3-d75c7c174da6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clean Minimal Metrics Calculation - ENSURED PROPER STRUCTURE\nconst items = $input.all();\nconst timestamp = new Date().toISOString();\n\n// Simple brand detection\nfunction detectBrand(item) {\n  const text = `${item.title || ''} ${item.description || ''}`.toLowerCase();\n  const brands = {\n    'apple': ['apple', 'iphone', 'ipad', 'macbook'],\n    'samsung': ['samsung', 'galaxy'], \n    'google': ['google', 'pixel', 'android'],\n    'microsoft': ['microsoft', 'windows', 'surface', 'xbox']\n  };\n  \n  for (const [brand, keywords] of Object.entries(brands)) {\n    if (keywords.some(keyword => text.includes(keyword))) {\n      return brand;\n    }\n  }\n  return 'other';\n}\n\n// ALWAYS initialize brands object, even if empty\nconst metrics = {\n  timestamp,\n  brands: {}, // This will always exist\n  summary: {\n    totalItems: items.length,\n    period: 'current'\n  }\n};\n\n// Initialize ALL brand structures, even if no data\n['apple', 'samsung', 'google', 'microsoft'].forEach(brand => {\n  metrics.brands[brand] = {\n    mentions: 0,\n    sentiment: { total: 0, count: 0, avg: 0.5 },\n    positive: 0, \n    neutral: 0, \n    negative: 0,\n    sources: {},\n    engagement: { total: 0, count: 0, avg: 0 }\n  };\n});\n\n// Only process if we have items\nif (items && items.length > 0) {\n  items.forEach(item => {\n    const data = item.json;\n    if (!data) return;\n    \n    const brand = data.brand || detectBrand(data);\n    if (!metrics.brands[brand]) {\n      // Initialize if brand not in our list\n      metrics.brands[brand] = {\n        mentions: 0,\n        sentiment: { total: 0, count: 0, avg: 0.5 },\n        positive: 0, neutral: 0, negative: 0,\n        sources: {},\n        engagement: { total: 0, count: 0, avg: 0 }\n      };\n    }\n    \n    const brandMetrics = metrics.brands[brand];\n    brandMetrics.mentions++;\n    \n    // Sentiment analysis with defaults\n    const score = parseFloat(data.sentimentScore) || 0.5;\n    brandMetrics.sentiment.total += score;\n    brandMetrics.sentiment.count++;\n    \n    // Sentiment distribution with defaults\n    const sentiment = (data.sentiment || 'neutral').toLowerCase();\n    if (sentiment.includes('positive')) brandMetrics.positive++;\n    else if (sentiment.includes('negative')) brandMetrics.negative++;\n    else brandMetrics.neutral++;\n    \n    // Engagement tracking\n    const engagement = parseFloat(data.engagementScore) || 0;\n    if (engagement > 0) {\n      brandMetrics.engagement.total += engagement;\n      brandMetrics.engagement.count++;\n    }\n    \n    // Source tracking\n    const source = data.source || 'unknown';\n    brandMetrics.sources[source] = (brandMetrics.sources[source] || 0) + 1;\n  });\n\n  // Calculate averages and percentages\n  Object.keys(metrics.brands).forEach(brand => {\n    const brandData = metrics.brands[brand];\n    \n    if (brandData.sentiment.count > 0) {\n      brandData.sentiment.avg = brandData.sentiment.total / brandData.sentiment.count;\n    }\n    \n    if (brandData.engagement.count > 0) {\n      brandData.engagement.avg = brandData.engagement.total / brandData.engagement.count;\n    }\n    \n    // Convert to percentages\n    const total = brandData.mentions;\n    if (total > 0) {\n      brandData.positivePercent = (brandData.positive / total) * 100;\n      brandData.neutralPercent = (brandData.neutral / total) * 100; \n      brandData.negativePercent = (brandData.negative / total) * 100;\n    } else {\n      brandData.positivePercent = 0;\n      brandData.neutralPercent = 0;\n      brandData.negativePercent = 0;\n    }\n  });\n}\n\n// Simple drift detection (compare with previous run)\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.previousMetrics) {\n  staticData.previousMetrics = {};\n}\n\n// Calculate drifts with safe defaults\nObject.keys(metrics.brands).forEach(brand => {\n  const current = metrics.brands[brand].sentiment.avg;\n  const previous = staticData.previousMetrics[brand] || current;\n  \n  metrics.brands[brand].drift = {\n    value: current - previous,\n    percent: previous !== 0 ? ((current - previous) / previous) * 100 : 0,\n    direction: current > previous ? 'up' : current < previous ? 'down' : 'stable'\n  };\n});\n\n// Store for next comparison\nObject.keys(metrics.brands).forEach(brand => {\n  staticData.previousMetrics[brand] = metrics.brands[brand].sentiment.avg;\n});\n\nreturn [{ json: metrics }];"
+      },
+      "name": "Calculate Baseline Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4752,
+        4192
+      ],
+      "id": "1b604788-16c9-4de5-88ea-f71fd53be590"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Minimal Knowledge Graph\nconst items = $input.all();\nconst graph = {\n  entities: {},\n  relationships: [],\n  coMentions: {},\n  timestamp: new Date().toISOString()\n};\n\n// Simple brand detection\nfunction detectBrand(text) {\n  const brands = {\n    'apple': ['apple', 'iphone', 'ipad', 'macbook'],\n    'samsung': ['samsung', 'galaxy'], \n    'google': ['google', 'pixel', 'android'],\n    'microsoft': ['microsoft', 'windows', 'surface', 'xbox']\n  };\n  \n  for (const [brand, keywords] of Object.entries(brands)) {\n    if (keywords.some(keyword => text.includes(keyword))) {\n      return brand;\n    }\n  }\n  return null;\n}\n\n// Process items to build graph\nitems.forEach(item => {\n  const data = item.json;\n  if (!data?.title) return;\n  \n  const title = data.title.toLowerCase();\n  const description = (data.description || '').toLowerCase();\n  const fullText = title + ' ' + description;\n  \n  // Detect all brands mentioned\n  const mentionedBrands = [];\n  ['apple', 'samsung', 'google', 'microsoft'].forEach(brand => {\n    if (fullText.includes(brand)) {\n      mentionedBrands.push(brand);\n      \n      // Initialize entity if not exists\n      if (!graph.entities[brand]) {\n        graph.entities[brand] = {\n          type: 'brand',\n          mentions: 0,\n          sentimentScores: [],\n          sources: {},\n          topics: {}\n        };\n      }\n      \n      // Update entity data\n      graph.entities[brand].mentions++;\n      graph.entities[brand].sentimentScores.push(parseFloat(data.sentimentScore) || 0.5);\n      \n      // Track sources\n      const source = data.source || 'unknown';\n      graph.entities[brand].sources[source] = (graph.entities[brand].sources[source] || 0) + 1;\n    }\n  });\n  \n  // Create relationships for co-mentions\n  if (mentionedBrands.length >= 2) {\n    for (let i = 0; i < mentionedBrands.length; i++) {\n      for (let j = i + 1; j < mentionedBrands.length; j++) {\n        const brand1 = mentionedBrands[i];\n        const brand2 = mentionedBrands[j];\n        const key = [brand1, brand2].sort().join('-');\n        \n        // Track co-mentions\n        graph.coMentions[key] = (graph.coMentions[key] || 0) + 1;\n        \n        // Add relationship\n        graph.relationships.push({\n          source: brand1,\n          target: brand2,\n          type: 'co-mentioned',\n          context: data.title.substring(0, 100),\n          sentiment: data.sentiment || 'neutral',\n          source: data.source || 'unknown'\n        });\n      }\n    }\n  }\n  \n  // Extract topics/keywords\n  const topics = ['iphone', 'galaxy', 'pixel', 'surface', 'android', 'ios', 'windows', 'mac', 'ipad'];\n  topics.forEach(topic => {\n    if (fullText.includes(topic)) {\n      mentionedBrands.forEach(brand => {\n        if (!graph.entities[brand].topics[topic]) {\n          graph.entities[brand].topics[topic] = 0;\n        }\n        graph.entities[brand].topics[topic]++;\n      });\n    }\n  });\n});\n\n// Calculate average sentiment for each entity\nObject.keys(graph.entities).forEach(entity => {\n  const sentiments = graph.entities[entity].sentimentScores;\n  graph.entities[entity].avgSentiment = sentiments.length > 0 \n    ? sentiments.reduce((a, b) => a + b, 0) / sentiments.length \n    : 0.5;\n});\n\n// Find top topics for each brand\nObject.keys(graph.entities).forEach(brand => {\n  const topics = graph.entities[brand].topics;\n  const topTopics = Object.entries(topics)\n    .sort((a, b) => b[1] - a[1])\n    .slice(0, 3)\n    .map(([topic, count]) => ({ topic, count }));\n  \n  graph.entities[brand].topTopics = topTopics;\n});\n\n// Store in static data for other nodes\nconst staticData = $getWorkflowStaticData('global');\nstaticData.knowledgeGraph = graph;\n\nreturn [{ json: graph }];"
+      },
+      "name": "Build Knowledge Graph",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4912,
+        3648
+      ],
+      "id": "f9cc1419-6375-4af9-bd0c-9e278a6ff1ba"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Multi-Brand Competitor Analysis - FIXED FOR RAW ARTICLE DATA\nconst items = $input.all();\nconst timestamp = new Date().toISOString();\n\n// Initialize analysis structure\nconst analysis = {\n  timestamp: timestamp,\n  brands: {\n    apple: { mentions: 0, sentimentScores: [], positive: 0, neutral: 0, negative: 0 },\n    samsung: { mentions: 0, sentimentScores: [], positive: 0, neutral: 0, negative: 0 },\n    google: { mentions: 0, sentimentScores: [], positive: 0, neutral: 0, negative: 0 },\n    microsoft: { mentions: 0, sentimentScores: [], positive: 0, neutral: 0, negative: 0 }\n  },\n  shareOfVoice: {},\n  sentimentRanking: [],\n  competitiveGaps: [],\n  alerts: []\n};\n\n// Process each article\nitems.forEach(item => {\n  const data = item.json;\n  if (!data || !data.brand) return;\n  \n  const brand = data.brand.toLowerCase();\n  \n  // Only process known brands\n  if (analysis.brands[brand]) {\n    const brandData = analysis.brands[brand];\n    brandData.mentions++;\n    \n    // Add sentiment score\n    const score = parseFloat(data.sentimentScore) || 0.5;\n    brandData.sentimentScores.push(score);\n    \n    // Count sentiment distribution\n    const sentiment = (data.sentiment || 'neutral').toLowerCase();\n    if (sentiment.includes('positive')) brandData.positive++;\n    else if (sentiment.includes('negative')) brandData.negative++;\n    else brandData.neutral++;\n  }\n});\n\n// Calculate averages and percentages\nlet totalMentions = 0;\n\nObject.keys(analysis.brands).forEach(brand => {\n  const brandData = analysis.brands[brand];\n  totalMentions += brandData.mentions;\n  \n  // Calculate average sentiment\n  if (brandData.sentimentScores.length > 0) {\n    brandData.avgSentiment = brandData.sentimentScores.reduce((a, b) => a + b, 0) / brandData.sentimentScores.length;\n  } else {\n    brandData.avgSentiment = 0.5;\n  }\n  \n  // Calculate percentages\n  if (brandData.mentions > 0) {\n    brandData.positivePercent = (brandData.positive / brandData.mentions) * 100;\n    brandData.neutralPercent = (brandData.neutral / brandData.mentions) * 100;\n    brandData.negativePercent = (brandData.negative / brandData.mentions) * 100;\n  } else {\n    brandData.positivePercent = 0;\n    brandData.neutralPercent = 0;\n    brandData.negativePercent = 0;\n  }\n});\n\n// Calculate share of voice\nObject.keys(analysis.brands).forEach(brand => {\n  analysis.shareOfVoice[brand] = totalMentions > 0 \n    ? (analysis.brands[brand].mentions / totalMentions) * 100 \n    : 0;\n});\n\n// Create sentiment ranking\nanalysis.sentimentRanking = Object.keys(analysis.brands)\n  .map(brand => ({\n    brand: brand,\n    sentiment: analysis.brands[brand].avgSentiment,\n    mentions: analysis.brands[brand].mentions,\n    positivePercent: analysis.brands[brand].positivePercent,\n    negativePercent: analysis.brands[brand].negativePercent\n  }))\n  .sort((a, b) => b.sentiment - a.sentiment);\n\n// Calculate competitive gaps\nif (analysis.sentimentRanking.length > 1) {\n  const leader = analysis.sentimentRanking[0];\n  for (let i = 1; i < analysis.sentimentRanking.length; i++) {\n    const competitor = analysis.sentimentRanking[i];\n    analysis.competitiveGaps.push({\n      leader: leader.brand,\n      competitor: competitor.brand,\n      sentimentGap: (leader.sentiment - competitor.sentiment).toFixed(3),\n      mentionGap: leader.mentions - competitor.mentions\n    });\n  }\n}\n\n// Generate alerts\nanalysis.sentimentRanking.forEach(item => {\n  if (item.sentiment < 0.3 && item.mentions > 2) {\n    analysis.alerts.push(`🚨 Negative sentiment for ${item.brand}: ${item.sentiment.toFixed(2)} (${item.mentions} mentions)`);\n  }\n  \n  if (item.negativePercent > 40 && item.mentions > 1) {\n    analysis.alerts.push(`⚠️ High negative content for ${item.brand}: ${item.negativePercent.toFixed(1)}% negative`);\n  }\n});\n\n// Add summary\nanalysis.summary = {\n  totalBrands: analysis.sentimentRanking.length,\n  marketLeader: analysis.sentimentRanking[0]?.brand || 'none',\n  leaderSentiment: analysis.sentimentRanking[0]?.sentiment || 0,\n  totalAlerts: analysis.alerts.length,\n  totalMentions: totalMentions\n};\n\n// Store in static data\nconst staticData = $getWorkflowStaticData('global');\nstaticData.competitorAnalysis = analysis;\n\nreturn [{ json: analysis }];"
+      },
+      "name": "Multi-Brand Competitor Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4848,
+        3808
+      ],
+      "id": "6bbfe258-9d26-437d-8912-b918b234f627"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enhanced Anomaly Detection\nconst metrics = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\n\n// Initialize history\nif (!staticData.anomalyHistory) {\n  staticData.anomalyHistory = [];\n}\n\nconst history = staticData.anomalyHistory;\nconst anomalies = {\n  timestamp: metrics.timestamp,\n  brandAnomalies: {},\n  criticalAlerts: [],\n  warnings: []\n};\n\n// Check each brand for anomalies\nObject.keys(metrics.brands).forEach(brand => {\n  const brandData = metrics.brands[brand];\n  const brandAnomalies = [];\n  \n  // Sentiment anomaly (very low sentiment)\n  if (brandData.sentiment.avg < 0.2 && brandData.mentions > 2) {\n    brandAnomalies.push({\n      type: 'low_sentiment',\n      severity: 'critical',\n      message: `Sentiment critically low: ${brandData.sentiment.avg.toFixed(2)}`\n    });\n  }\n  \n  // Negative content spike\n  if (brandData.negativePercent > 50 && brandData.mentions > 3) {\n    brandAnomalies.push({\n      type: 'high_negative',\n      severity: 'warning', \n      message: `High negative content: ${brandData.negativePercent.toFixed(1)}%`\n    });\n  }\n  \n  // Engagement anomaly (very high engagement)\n  if (brandData.engagement.avg > 0.8 && brandData.engagement.count > 2) {\n    brandAnomalies.push({\n      type: 'viral_content',\n      severity: 'info',\n      message: `Potential viral content: ${brandData.engagement.avg.toFixed(2)} engagement`\n    });\n  }\n  \n  // Drift anomaly\n  if (brandData.drift && Math.abs(brandData.drift.value) > 0.3) {\n    brandAnomalies.push({\n      type: 'significant_drift',\n      severity: 'warning',\n      message: `Significant sentiment drift: ${brandData.drift.value.toFixed(2)}`\n    });\n  }\n  \n  if (brandAnomalies.length > 0) {\n    anomalies.brandAnomalies[brand] = brandAnomalies;\n    \n    // Separate critical alerts and warnings\n    brandAnomalies.forEach(anomaly => {\n      if (anomaly.severity === 'critical') {\n        anomalies.criticalAlerts.push(`${brand}: ${anomaly.message}`);\n      } else if (anomaly.severity === 'warning') {\n        anomalies.warnings.push(`${brand}: ${anomaly.message}`);\n      }\n    });\n  }\n});\n\n// Add to history\nhistory.push({\n  timestamp: metrics.timestamp,\n  totalAnomalies: anomalies.criticalAlerts.length + anomalies.warnings.length,\n  criticalCount: anomalies.criticalAlerts.length\n});\n\n// Keep only last 20 entries\nif (history.length > 20) {\n  history.shift();\n}\n\n// Calculate anomaly trend\nif (history.length >= 2) {\n  const recent = history.slice(-5);\n  const previous = history.slice(-10, -5);\n  \n  const recentAvg = recent.reduce((sum, h) => sum + h.totalAnomalies, 0) / recent.length;\n  const previousAvg = previous.reduce((sum, h) => sum + h.totalAnomalies, 0) / previous.length;\n  \n  anomalies.trend = recentAvg > previousAvg ? 'increasing' : recentAvg < previousAvg ? 'decreasing' : 'stable';\n}\n\nanomalies.hasCriticalAlerts = anomalies.criticalAlerts.length > 0;\n\nreturn [{ json: { metrics, anomalies } }];"
+      },
+      "name": "Detect Anomalies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4448,
+        4192
+      ],
+      "id": "8d062cd0-198b-438f-9b52-ae5da1e7a4a4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format for Google Sheets - Simplified\nconst data = $input.first().json;\nconst timestamp = new Date().toISOString();\n\nconst sheetData = {\n  timestamp: timestamp,\n  totalItems: data.metrics.summary.totalItems || 0\n};\n\n// Add brand metrics\n['apple', 'samsung', 'google', 'microsoft'].forEach(brand => {\n  const brandData = data.metrics.brands[brand];\n  if (brandData) {\n    sheetData[`${brand}_mentions`] = brandData.mentions || 0;\n    sheetData[`${brand}_sentiment`] = (brandData.sentiment.avg || 0).toFixed(3);\n    sheetData[`${brand}_positive`] = (brandData.positivePercent || 0).toFixed(1);\n    sheetData[`${brand}_negative`] = (brandData.negativePercent || 0).toFixed(1);\n    sheetData[`${brand}_engagement`] = (brandData.engagement.avg || 0).toFixed(3);\n    sheetData[`${brand}_drift`] = (brandData.drift?.value || 0).toFixed(3);\n  }\n});\n\n// Add anomaly info\nsheetData.critical_alerts = data.anomalies.criticalAlerts.length;\nsheetData.warnings = data.anomalies.warnings.length;\nsheetData.anomaly_trend = data.anomalies.trend || 'stable';\n\nreturn [{ json: sheetData }];"
+      },
+      "name": "Format Drift Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4256,
+        4192
+      ],
+      "id": "7ff2c7bd-76e3-42c6-84e2-4f22e5cb4d9c"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simple Alert Trigger\nconst data = $input.first().json;\n\nconst shouldAlert = \n  data.anomalies.hasCriticalAlerts ||\n  data.anomalies.criticalAlerts.length > 0 ||\n  data.anomalies.warnings.length > 3;\n\nif (shouldAlert) {\n  const alert = {\n    subject: `🚨 Brand Monitoring Alert - ${new Date().toLocaleDateString()}`,\n    message: `Brand Monitoring Alert\\n\\n` +\n      `Critical Alerts: ${data.anomalies.criticalAlerts.length}\\n` +\n      `Warnings: ${data.anomalies.warnings.length}\\n` +\n      `Trend: ${data.anomalies.trend || 'stable'}\\n\\n` +\n      `Top Issues:\\n` +\n      data.anomalies.criticalAlerts.slice(0, 3).map(alert => `• ${alert}`).join('\\n') + '\\n\\n' +\n      `Full report available in dashboard.`,\n    timestamp: new Date().toISOString(),\n    severity: data.anomalies.criticalAlerts.length > 0 ? 'critical' : 'warning'\n  };\n  \n  return [{ json: alert }];\n}\n\n// No alert needed\nreturn [{ json: { noAlert: true } }];"
+      },
+      "name": "Alert Trigger",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4256,
+        4336
+      ],
+      "id": "c971834c-b942-4ef1-a9be-01dde753efd6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Knowledge Graph for Sheets\nconst kg = $input.first().json;\nconst timestamp = new Date().toISOString();\n\nconst sheetData = {\n  timestamp: timestamp,\n  total_entities: Object.keys(kg.entities).length,\n  total_relationships: kg.relationships.length\n};\n\n// Add entity metrics\n['apple', 'samsung', 'google', 'microsoft'].forEach(brand => {\n  const entity = kg.entities[brand];\n  if (entity) {\n    sheetData[`${brand}_mentions`] = entity.mentions || 0;\n    sheetData[`${brand}_sentiment`] = (entity.avgSentiment || 0).toFixed(3);\n    sheetData[`${brand}_top_topic`] = entity.topTopics?.[0]?.topic || 'N/A';\n    sheetData[`${brand}_topic_count`] = entity.topTopics?.[0]?.count || 0;\n  }\n});\n\n// Add co-mentions\nsheetData.apple_samsung_comentions = kg.coMentions['apple-samsung'] || 0;\nsheetData.apple_google_comentions = kg.coMentions['apple-google'] || 0;\nsheetData.apple_microsoft_comentions = kg.coMentions['apple-microsoft'] || 0;\nsheetData.samsung_google_comentions = kg.coMentions['google-samsung'] || 0;\n\nreturn [{ json: sheetData }];"
+      },
+      "name": "Format Knowledge Graph for Sheets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4736,
+        3648
+      ],
+      "id": "977fd49b-551a-417d-9e0e-823ac3e25181"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Competitor Analysis for Sheets - FIXED VERSION\nconst input = $input.first();\nif (!input) {\n  return [{ json: { error: 'No input data', timestamp: new Date().toISOString() } }];\n}\n\nconst analysis = input.json;\nif (!analysis) {\n  return [{ json: { error: 'Invalid analysis data', timestamp: new Date().toISOString() } }];\n}\n\nconst timestamp = new Date().toISOString();\n\n// Safe access to sentimentRanking\nconst sentimentRanking = analysis.sentimentRanking || [];\nconst competitiveGaps = analysis.competitiveGaps || [];\nconst shareOfVoice = analysis.shareOfVoice || {};\n\n// Safe market leader detection\nlet marketLeader = 'N/A';\nlet highestScore = 0;\nif (sentimentRanking.length > 0) {\n  marketLeader = sentimentRanking[0].brand || 'N/A';\n  highestScore = sentimentRanking[0].sentiment || 0;\n}\n\n// Format comprehensive data for spreadsheet\nconst sheetData = {\n  timestamp: timestamp,\n  market_leader: marketLeader,\n  market_leader_score: highestScore.toFixed(3),\n  total_analyzed: analysis.summary?.totalMentions || 0,\n  total_alerts: analysis.alerts?.length || 0\n};\n\n// Safe brand metrics with defaults\n['apple', 'samsung', 'google', 'microsoft'].forEach(brand => {\n  const brandData = analysis.brands?.[brand];\n  \n  sheetData[`${brand}_mentions`] = brandData?.mentions || 0;\n  sheetData[`${brand}_sentiment`] = (brandData?.sentiment || 0.5).toFixed(3);\n  sheetData[`${brand}_share_voice`] = (shareOfVoice[brand] || 0).toFixed(1);\n  sheetData[`${brand}_engagement`] = (brandData?.engagement || 0).toFixed(3);\n  sheetData[`${brand}_negative`] = (brandData?.negativePercent || 0).toFixed(1);\n});\n\n// Safe sentiment rankings\nsentimentRanking.forEach((item, index) => {\n  if (index < 5) { // Only top 5 rankings\n    sheetData[`rank_${index + 1}_brand`] = item.brand || 'N/A';\n    sheetData[`rank_${index + 1}_sentiment`] = (item.sentiment || 0).toFixed(3);\n    sheetData[`rank_${index + 1}_mentions`] = item.mentions || 0;\n  }\n});\n\n// Fill remaining ranks with defaults if less than 5\nfor (let i = sentimentRanking.length; i < 5; i++) {\n  sheetData[`rank_${i + 1}_brand`] = 'N/A';\n  sheetData[`rank_${i + 1}_sentiment`] = '0.000';\n  sheetData[`rank_${i + 1}_mentions`] = 0;\n}\n\n// Safe competitive gaps\nif (competitiveGaps.length > 0) {\n  const firstGap = competitiveGaps[0];\n  sheetData.largest_sentiment_gap = firstGap.sentimentGap || '0.000';\n  sheetData.gap_between = `${firstGap.leader || 'N/A'}-${firstGap.competitor || 'N/A'}`;\n} else {\n  sheetData.largest_sentiment_gap = '0.000';\n  sheetData.gap_between = 'N/A-N/A';\n}\n\n// Add alert summary\nsheetData.critical_alerts_count = analysis.alerts?.filter(alert => \n  alert.includes('🚨') || alert.includes('critical')\n).length || 0;\n\nsheetData.warning_alerts_count = analysis.alerts?.filter(alert => \n  alert.includes('⚠️') || alert.includes('warning')\n).length || 0;\n\nreturn [{ json: sheetData }];"
+      },
+      "name": "Format Competitor Analysis for Sheets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4688,
+        3856
+      ],
+      "id": "498d27d3-95c1-4381-b04d-117a6dbf7d96"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !$json.noNewItems }}",
+              "value2": "={{ true }}"
+            }
+          ]
+        }
+      },
+      "name": "Check New Items",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -5744,
+        4224
+      ],
+      "id": "70a02542-57de-49c6-b116-f26fa02a98bd"
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o-mini",
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a sentiment analysis expert. Analyze the given text and return ONLY a valid JSON object with EXACTLY these four fields: {   \"sentiment\": \"Positive\" or \"Neutral\" or \"Negative\",   \"score\": <number between 0 and 1>,   \"summary\": \"<one sentence summary>\",   \"keywords\": [\"keyword1\", \"keyword2\", \"keyword3\"] } Do NOT include any other fields. Only return these four fields."
+            },
+            {
+              "content": "={{$json[\"fullText\"]}}"
+            }
+          ]
+        },
+        "options": {},
+        "requestOptions": {}
+      },
+      "name": "OpenAI Sentiment2",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        -5600,
+        3968
+      ],
+      "id": "b069c1e6-7990-4e04-8aef-b459b122dbd2",
+      "credentials": {
+        "openAiApi": {
+          "id": "MhNTv8W1V8DdFQvZ",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine original data with AI analysis - SIMPLIFIED\nconst timestamp = new Date().toISOString();\nconst aiResponses = $input.all();\n\nconst results = [];\n\nfor (let i = 0; i < aiResponses.length; i++) {\n  const aiResponse = aiResponses[i];\n  \n  // Get original data from Check New Items\n  const checkNewItems = $('Check New Items').all();\n  const originalData = checkNewItems[i]?.json || {};\n  \n  // Simple brand detection\n  let detectedBrand = 'apple'; // Default to apple\n  const text = `${originalData.title || ''} ${originalData.description || ''}`.toLowerCase();\n  \n  if (text.includes('samsung') || text.includes('galaxy')) {\n    detectedBrand = 'samsung';\n  } else if (text.includes('google') || text.includes('pixel') || text.includes('android')) {\n    detectedBrand = 'google';\n  } else if (text.includes('microsoft') || text.includes('windows') || text.includes('surface')) {\n    detectedBrand = 'microsoft';\n  }\n  \n  // Initialize result\n  const result = {\n    timestamp,\n    title: originalData.title || 'N/A',\n    link: originalData.link || 'N/A',\n    source: originalData.source || 'Unknown',\n    pubDate: originalData.pubDate || timestamp,\n    description: originalData.description || '',\n    sentiment: 'Neutral',\n    sentimentScore: 0.5,\n    summary: 'No analysis available',\n    engagementScore: originalData.engagementScore || 0,\n    brand: detectedBrand\n  };\n  \n  try {\n    let aiContent = null;\n    \n    if (aiResponse.json?.message?.content) {\n      aiContent = JSON.parse(aiResponse.json.message.content);\n    }\n    \n    if (aiContent) {\n      result.sentiment = aiContent.sentiment || 'Neutral';\n      result.sentimentScore = aiContent.score || 0.5;\n      result.summary = aiContent.summary || 'No summary';\n    }\n  } catch (error) {\n    // Fallback sentiment based on keywords\n    if (text.includes('issue') || text.includes('problem') || text.includes('disappointing')) {\n      result.sentiment = 'Negative';\n      result.sentimentScore = 0.3;\n    } else if (text.includes('launch') || text.includes('announces') || text.includes('impressive')) {\n      result.sentiment = 'Positive';\n      result.sentimentScore = 0.7;\n    }\n  }\n  \n  results.push({ json: result });\n}\n\nreturn results;"
+      },
+      "name": "Combine Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5328,
+        3760
+      ],
+      "id": "61947f84-35eb-499c-97fd-558ef2be49ea"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM",
+          "mode": "list",
+          "cachedResultName": "ProcessedLinks"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1181501375,
+          "mode": "list",
+          "cachedResultName": "DriftMetrics",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM/edit#gid=1181501375"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "totalItems",
+              "displayName": "totalItems",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "apple_mentions",
+              "displayName": "apple_mentions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "apple_sentiment",
+              "displayName": "apple_sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "apple_negative",
+              "displayName": "apple_negative",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "critical_alerts",
+              "displayName": "critical_alerts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Save Drift Metrics1",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -4064,
+        4192
+      ],
+      "id": "23427777-853c-4732-9ecb-3a3d67307c02",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cAmX81pWMtFb3fUI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM",
+          "mode": "list",
+          "cachedResultName": "ProcessedLinks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "link": "={{$json.link}}",
+            "title": "={{$json.title}}",
+            "processedAt": "={{$json.timestamp}}",
+            "sentiment": "={{$json.sentiment}}",
+            "score": "={{$json.sentimentScore}}",
+            "brand": "={{$json.brand}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "link",
+              "displayName": "link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "processedAt",
+              "displayName": "processedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "score",
+              "displayName": "score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "brand",
+              "displayName": "brand",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -4736,
+        4400
+      ],
+      "id": "a09239de-b523-4646-8a2a-c13b761cbff0",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cAmX81pWMtFb3fUI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simple JSON Response\nconst allResults = $input.all();\n\nconst summary = {\n  success: true,\n  totalProcessed: allResults.length,\n  timestamp: new Date().toISOString(),\n  items: allResults.map(item => item.json)\n};\n\nreturn [{ json: summary }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4592,
+        4032
+      ],
+      "id": "3b144c78-c13d-4227-b2a0-400962f42490",
+      "name": "Create JSON1"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json, null, 2) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Respond with JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -4400,
+        4032
+      ],
+      "id": "fdb2ae10-ee38-4e1c-9357-32dfc22e9190"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"No new items to process\", \n  \"timestamp\": \"{{ $now.toISO() }}\"\n}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Respond No New Items",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -5184,
+        4432
+      ],
+      "id": "2b600290-e257-4335-b646-754efb331be0"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM",
+          "mode": "list",
+          "cachedResultName": "ProcessedLinks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1171604589,
+          "mode": "list",
+          "cachedResultName": "KnowledgeGraph",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM/edit#gid=1171604589"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Save Knowledge Graph to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -4560,
+        3648
+      ],
+      "id": "4cc13f7a-f631-4430-b177-629a80499608",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cAmX81pWMtFb3fUI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM",
+          "mode": "list",
+          "cachedResultName": "ProcessedLinks",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1565166436,
+          "mode": "list",
+          "cachedResultName": "CompetitorAnalysis",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Uc8ZT586FafrP38p8grNuhP5_lz5wfExqfHrnlvdfQM/edit#gid=1565166436"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Save Competitor Analysis to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -4512,
+        3840
+      ],
+      "id": "738bb61d-f841-4861-a91b-bafcd9da865d",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cAmX81pWMtFb3fUI",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Fetch Apple Press Releases1": {
+      "main": [
+        [
+          {
+            "node": "Parse Apple Press XML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Apple Press XML1": {
+      "main": [
+        [
+          {
+            "node": "Extract Apple Press1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Apple Press1": {
+      "main": [
+        [
+          {
+            "node": "Merge All News2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Google News RSS1": {
+      "main": [
+        [
+          {
+            "node": "Parse Google News XML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Google News XML1": {
+      "main": [
+        [
+          {
+            "node": "Extract Google News1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Google News1": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All News2": {
+      "main": [
+        [
+          {
+            "node": "Combine Data1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Processed Links1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Processed Links1": {
+      "main": [
+        [
+          {
+            "node": "Combine Data1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine Data1": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate with Sheets1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate with Sheets1": {
+      "main": [
+        [
+          {
+            "node": "Check New Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Multi-Brand Config1": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Apple Press Releases1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches1": {
+      "main": [
+        [
+          {
+            "node": "Merge All News2",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Fetch Google News RSS1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Subreddits": {
+      "main": [
+        [
+          {
+            "node": "Fetch Reddit Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Reddit Posts": {
+      "main": [
+        [
+          {
+            "node": "Extract & Format Reddit Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract & Format Reddit Data": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Merge All News2",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Prepare Subreddits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Regulatory Sources Config1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Existing Articles1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Multi-Brand Config1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse XML1": {
+      "main": [
+        [
+          {
+            "node": "Extract Content1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Source Type": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Fetch Regulatory News1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Regulatory News1": {
+      "main": [
+        [
+          {
+            "node": "Parse XML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regulatory Sources Config1": {
+      "main": [
+        [
+          {
+            "node": "Filter Source Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Data Streams": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Articles1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Compliance Sheet": {
+      "main": [
+        []
+      ]
+    },
+    "Extract Content1": {
+      "main": [
+        [
+          {
+            "node": "Merge Data Streams",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Existing Articles1": {
+      "main": [
+        [
+          {
+            "node": "Merge Data Streams",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Deduplicate Articles1": {
+      "main": [
+        [
+          {
+            "node": "Check New Articles1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check New Articles1": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Sentiment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "OpenAI Sentiment": {
+      "main": [
+        [
+          {
+            "node": "Merge Analysis Results1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Analysis Results1": {
+      "main": [
+        [
+          {
+            "node": "Save to Compliance Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Baseline Metrics": {
+      "main": [
+        [
+          {
+            "node": "Detect Anomalies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Knowledge Graph": {
+      "main": [
+        [
+          {
+            "node": "Format Knowledge Graph for Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Multi-Brand Competitor Analysis": {
+      "main": [
+        [
+          {
+            "node": "Format Competitor Analysis for Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Anomalies": {
+      "main": [
+        [
+          {
+            "node": "Format Drift Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alert Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Drift Metrics": {
+      "main": [
+        [
+          {
+            "node": "Save Drift Metrics1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Knowledge Graph for Sheets": {
+      "main": [
+        [
+          {
+            "node": "Save Knowledge Graph to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Competitor Analysis for Sheets": {
+      "main": [
+        [
+          {
+            "node": "Save Competitor Analysis to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check New Items": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Sentiment2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond No New Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Sentiment2": {
+      "main": [
+        [
+          {
+            "node": "Combine Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Data": {
+      "main": [
+        [
+          {
+            "node": "Calculate Baseline Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create JSON1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Multi-Brand Competitor Analysis",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Knowledge Graph",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create JSON1": {
+      "main": [
+        [
+          {
+            "node": "Respond with JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6e16c063772506d2470f9ffe01a110cc7828ecfbdb0337f760779a017ff9d14d"
+  }
+}
