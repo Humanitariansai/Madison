@@ -23,15 +23,44 @@ class RedditScraper:
         try:
             for submission in self.reddit.subreddit("all").search(query, time_filter="week", limit=limit):
                 posts.append({
+                    # Basic info
                     "id": submission.id,
                     "title": submission.title,
                     "text": submission.selftext,
                     "subreddit": submission.subreddit.display_name,
-                    "score": submission.score,
-                    "comments": submission.num_comments,
-                    "created_at": datetime.fromtimestamp(submission.created_utc),
+                    "author": str(submission.author),
                     "url": submission.url,
-                    "author": str(submission.author)
+                    "permalink": f"https://reddit.com{submission.permalink}",
+                    "domain": submission.domain,
+                    
+                    # Engagement metrics
+                    "score": submission.score,
+                    "upvote_ratio": submission.upvote_ratio,
+                    "comments": submission.num_comments,
+                    "gilded": submission.gilded,
+                    "total_awards": submission.total_awards_received,
+                    
+                    # Content classification
+                    "nsfw": submission.over_18,
+                    "spoiler": submission.spoiler,
+                    "stickied": submission.stickied,
+                    "locked": submission.locked,
+                    "archived": submission.archived,
+                    "distinguished": submission.distinguished,
+                    
+                    # Media info
+                    "is_video": submission.is_video,
+                    "is_original_content": submission.is_original_content,
+                    "is_self": submission.is_self,
+                    
+                    # Flair and categorization
+                    "link_flair_text": submission.link_flair_text,
+                    "link_flair_css_class": submission.link_flair_css_class,
+                    "author_flair_text": submission.author_flair_text,
+                    
+                    # Timestamps
+                    "created_at": datetime.fromtimestamp(submission.created_utc),
+                    "edited": datetime.fromtimestamp(submission.edited) if submission.edited else None,
                 })
         except Exception as e:
             print(f"Reddit scraping error: {e}")
@@ -47,13 +76,44 @@ class RedditScraper:
             sub = self.reddit.subreddit(subreddit)
             for submission in sub.new(limit=limit):
                 posts.append({
+                    # Basic info
                     "id": submission.id,
                     "title": submission.title,
                     "text": submission.selftext,
+                    "subreddit": submission.subreddit.display_name,
+                    "author": str(submission.author),
+                    "url": submission.url,
+                    "permalink": f"https://reddit.com{submission.permalink}",
+                    "domain": submission.domain,
+                    
+                    # Engagement metrics
                     "score": submission.score,
+                    "upvote_ratio": submission.upvote_ratio,
                     "comments": submission.num_comments,
+                    "gilded": submission.gilded,
+                    "total_awards": submission.total_awards_received,
+                    
+                    # Content classification
+                    "nsfw": submission.over_18,
+                    "spoiler": submission.spoiler,
+                    "stickied": submission.stickied,
+                    "locked": submission.locked,
+                    "archived": submission.archived,
+                    "distinguished": submission.distinguished,
+                    
+                    # Media info
+                    "is_video": submission.is_video,
+                    "is_original_content": submission.is_original_content,
+                    "is_self": submission.is_self,
+                    
+                    # Flair and categorization
+                    "link_flair_text": submission.link_flair_text,
+                    "link_flair_css_class": submission.link_flair_css_class,
+                    "author_flair_text": submission.author_flair_text,
+                    
+                    # Timestamps
                     "created_at": datetime.fromtimestamp(submission.created_utc),
-                    "url": submission.url
+                    "edited": datetime.fromtimestamp(submission.edited) if submission.edited else None,
                 })
         except Exception as e:
             print(f"Subreddit error: {e}")

@@ -156,19 +156,6 @@ headers = {
 - **Efficiency Improvements**: Reduce server load and resource usage
 - **Compliance Tools**: Develop better compliance monitoring
 
-## 📞 Contact Information
-
-### Questions or Concerns
-- **Project Lead**: Ujwal Chandrashekhar
-- **Ethics Officer**: [To be designated]
-- **Legal Team**: [To be designated]
-- **Privacy Officer**: [To be designated]
-
-### Reporting Violations
-- **Email**: ethics@[domain].com
-- **Process**: Describe the issue, provide evidence, suggest remediation
-- **Response Time**: Within 48 hours for acknowledgment
-
 ## 📚 References
 
 - [Twitter Developer Policy](https://developer.twitter.com/en/developer-terms/policy)

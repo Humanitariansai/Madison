@@ -34,17 +34,24 @@ class DataStore:
     def insert_post(self, post_data: dict) -> bool:
         """Insert a post, skip if duplicate"""
         try:
-            self.db.posts.insert_one({
-                "id": post_data.get("id"),
-                "platform": post_data.get("platform"),
-                "title": post_data.get("title"),
-                "content": post_data.get("content", post_data.get("text")),
-                "author": post_data.get("author"),
-                "source_url": post_data.get("url"),
-                "engagement_metrics": post_data.get("metrics", {}),
-                "created_at": post_data.get("created_at"),
-                "scraped_at": datetime.now()
-            })
+            # Use the post_data structure as-is (enhanced format from frontend)
+            # or fall back to old format for backward compatibility
+            if "metrics" in post_data:
+                # New enhanced format - store as-is
+                self.db.posts.insert_one(post_data)
+            else:
+                # Old format - convert to legacy structure for compatibility
+                self.db.posts.insert_one({
+                    "id": post_data.get("id"),
+                    "platform": post_data.get("platform"),
+                    "title": post_data.get("title"),
+                    "content": post_data.get("content", post_data.get("text")),
+                    "author": post_data.get("author"),
+                    "source_url": post_data.get("url"),
+                    "engagement_metrics": post_data.get("metrics", {}),
+                    "created_at": post_data.get("created_at"),
+                    "scraped_at": datetime.now()
+                })
             return True
         except DuplicateKeyError:
             return False  # Duplicate

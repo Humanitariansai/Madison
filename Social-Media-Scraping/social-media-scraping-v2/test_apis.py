@@ -23,7 +23,7 @@ def test_twitter_api():
     url = "https://api.twitter.com/2/tweets/search/recent"
     params = {
         "query": "hello",
-        "max_results": 10
+        "max_results": 1
     }
     
     try:
