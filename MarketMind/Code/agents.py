@@ -1,71 +1,63 @@
-from crewai import Agent
+from crewai import Task
 
-
-class MarketResearchAgents:
-    def __init__(self):
-        self.scrape_tool = FirecrawlScrapeWebsiteTool()
-        self.read_file_tool = FileReadTool()
-        self.fallback_search_tool = FallbackSearchTool()
-
-    def strategy_consultant(self):
-        return Agent(
-            role='Strategy Consultant',
-            goal=(
-                "Analyze the initial product and market information to formulate a "
-                
+class MarketResearchTasks:
+    def research_planning_task(self, agent, product_name, industry):
+        return Task(
+            description=(
+                f"Develop a detailed research plan for understanding the {industry} market "
+                f"with specific focus on the product '{product_name}'. "
+                "Include objectives, key questions, data sources, and methodologies."
             ),
-            backstory=(
-                "A seasoned consultant from McKinsey, you excel at framing complex business problems. "
-                
+            expected_output=(
+                "A well-structured research plan in Markdown format that outlines "
+                "objectives, data sources, analysis methods, and expected insights."
             ),
-            tools=[], 
-            verbose=True
+            agent=agent,
+            output_file="outputs/research_plan.md"
         )
 
-    def competitor_analyst(self):
-        return Agent(
-            role='Competitor Analyst',
-            goal=(
-                "Identify key competitors for {product_name} in the {industry} sector. "
-                
+    def competitor_analysis_task(self, agent, product_name, industry):
+        return Task(
+            description=(
+                f"Conduct a competitor analysis for the product '{product_name}' "
+                f"within the {industry} industry. Identify at least 5 competitors "
+                "and compare their strengths, weaknesses, and market strategies."
             ),
-            backstory=(
-                "A meticulous analyst with a background in competitive intelligence and market research. You are an expert at "
-                
+            expected_output=(
+                "A competitor analysis report in Markdown format including a table "
+                "comparing each competitor’s key differentiators."
             ),
-            tools=[WebSearchTool(), self.scrape_tool, self.fallback_search_tool],
-            verbose=True
+            agent=agent,
+            output_file="outputs/competitor_analysis.md"
         )
 
-    def customer_persona_analyst(self):
-        return Agent(
-            role='Customer Persona Analyst',
-            goal=(
-                
-                "Provide bold, opinionated insights about customer behavior and market opportunities."
+    def customer_analysis_task(self, agent, product_name, industry):
+        return Task(
+            description=(
+                f"Develop detailed customer personas for '{product_name}' within the {industry} industry. "
+                "Include demographic, psychographic, and behavioral data. Create 3–4 distinct personas."
             ),
-            backstory=(
-                "An empathetic market researcher with a knack for storytelling and strong opinions about customer behavior. "
-                
+            expected_output=(
+                "A detailed Markdown report containing customer personas with narratives, "
+                "motivations, and buying behaviors."
             ),
-            tools=[WebSearchTool(), self.scrape_tool, self.fallback_search_tool],
-            verbose=True
+            agent=agent,
+            output_file="outputs/customer_analysis.md"
         )
 
-    
-
-    def lead_strategy_synthesizer(self):
-        return Agent(
-            role='Lead Strategy Synthesizer',
-            goal=(
-                "Consolidate all research findings into an extremely detailed, comprehensive market research document. "
-                
+    def synthesis_task(self, agent, product_name, industry, dependencies):
+        return Task(
+            description=(
+                f"Synthesize insights from competitor, customer, and research reports "
+                f"to generate a single cohesive market strategy report for '{product_name}' in the {industry} industry. "
+                "Include strategic recommendations, trends, and opportunities."
             ),
-            backstory=(
-                "A brilliant ex-CMO and management consultant known for bold, contrarian market insights. "
-                
+            expected_output=(
+                "A comprehensive market strategy report in Markdown format, integrating insights "
+                "from all previous tasks and structured for presentation to executives."
             ),
-            allow_delegation=False, 
-            tools=[self.read_file_tool],
-            verbose=True
+            agent=agent,
+            context=dependencies,
+            output_file="outputs/final_market_strategy_report.md"
         )
+
