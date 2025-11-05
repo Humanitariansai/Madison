@@ -197,23 +197,20 @@ class TestRedditIntegration(unittest.TestCase):
         print(f"\nDebug - Number of Reddit posts found: {len(reddit_posts)}")
         
         if reddit_posts:
-            # Store first Reddit post
             post = reddit_posts[0]
             print(f"Debug - First post data: {post.get('id')}, {post.get('title')}")
             
-            # Create test post with unique identifier
             post_data = {
-                "id": f"test_{post['id']}_{test_run_id}",  # Unique test ID
+                "id": f"test_{post['id']}_{test_run_id}",
                 "platform": "reddit",
                 "title": post["title"],
                 "content": post["text"],
                 "author": post["author"],
                 "created_at": post["created_at"],
                 "is_test_data": True,
-                "test_run_id": test_run_id  # Add test run identifier
+                "test_run_id": test_run_id
             }
             
-            # Track the test post
             self.test_post_ids.append(post_data["id"])
             
             print(f"Debug - Storing post with data: {post_data}")
@@ -221,8 +218,7 @@ class TestRedditIntegration(unittest.TestCase):
             self.assertTrue(stored)
             print(f"Debug - Insert successful: {stored}")
             
-            # Verify retrieval by searching for a word we know is in the title
-            search_term = post["title"].split()[0]  # Use the first word from the title
+            search_term = post["title"].split()[0]
             print(f"Debug - Searching for term from title: '{search_term}'")
             results = self.store.search_posts(search_term)
             print(f"Debug - Search results for '{search_term}': {len(results)}")
@@ -230,23 +226,19 @@ class TestRedditIntegration(unittest.TestCase):
             
     def test_reddit_search(self):
         """Test Reddit platform search functionality"""
-        # Use a very common search term that's likely to get results
-        keyword = "python"  # Changed from "technology" as it's more specific and common
+        keyword = "python"
         test_run_id = f"test_run_{datetime.now().timestamp()}"
         
-        # Get posts from Reddit
         print(f"\nSearching Reddit for '{keyword}'...")
-        reddit_posts = self.reddit.search_subreddits(keyword, limit=5)  # Increased limit
+        reddit_posts = self.reddit.search_subreddits(keyword, limit=5)
         
         if not reddit_posts:
             self.skipTest("No Reddit posts found - network or API issue")
         
         print(f"Found {len(reddit_posts)} posts from Reddit")
         
-        # Store Reddit posts and track which should be searchable
         posts_with_keyword = []
         for post in reddit_posts:
-            # Create test post
             post_data = {
                 "id": f"test_reddit_{post['id']}_{test_run_id}",
                 "platform": "reddit",
