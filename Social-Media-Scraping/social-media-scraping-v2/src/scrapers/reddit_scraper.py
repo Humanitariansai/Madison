@@ -1,4 +1,3 @@
-# src/scrapers/reddit_scraper.py
 import praw
 import os
 from typing import List, Dict
@@ -8,20 +7,80 @@ from utils.rate_limiter import rate_limiter
 
 class RedditScraper:
     def __init__(self):
-        load_dotenv()  # Load environment variables
+        load_dotenv()
+        
+        # Initialize Reddit API client
         self.reddit = praw.Reddit(
             client_id=os.getenv("REDDIT_CLIENT_ID"),
             client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
-            user_agent=os.getenv("REDDIT_USER_AGENT", "SocialMediaScraper/1.0")
+            user_agent=os.getenv("REDDIT_USER_AGENT")
         )
+        
+        # Region-specific subreddits mapping
+        self.region_subreddits = {
+            "North America": ["usa", "canada", "mexico", "northamerica"],
+            "Europe": ["europe", "europeans", "eu", "ukpolitics", "germany", "france", "italy"],
+            "Asia": ["asia", "china", "india", "japan", "korea", "singapore"],
+            "Oceania": ["australia", "newzealand", "oceania"],
+            "South America": ["brazil", "argentina", "chile", "southamerica"],
+            "Africa": ["africa", "southafrica", "nigeria", "kenya"],
+            "Global": ["all", "popular", "worldnews", "news"]
+        }
     
-    def search_subreddits(self, query: str, limit: int = 100) -> List[Dict]:
-        """Search across subreddits"""
+    def _get_region_subreddits(self, regions: List[str]) -> str:
+        """Get subreddit string for specified regions"""
+        if not regions or "Global" in regions:
+            return "all"
+        
+        selected_subs = []
+        for region in regions:
+            if region in self.region_subreddits:
+                selected_subs.extend(self.region_subreddits[region])
+        
+        return "+".join(selected_subs) if selected_subs else "all"
+    
+    def search_subreddits(
+        self, 
+        query: str, 
+        limit: int = 100, 
+        time_filter: str = "week",
+        start_date: datetime = None,
+        end_date: datetime = None,
+        min_upvotes: int = 0,
+        regions: List[str] = None
+    ) -> List[Dict]:
         rate_limiter.wait_if_needed('reddit')  # Rate limiting
         
         posts = []
         try:
-            for submission in self.reddit.subreddit("all").search(query, time_filter="week", limit=limit):
+            # Handle custom date range
+            if time_filter == "custom" and start_date and end_date:
+                search_time_filter = "all"
+            else:
+                search_time_filter = time_filter
+
+            # Get region-specific subreddits
+            region_subreddits = self._get_region_subreddits(regions) if regions else "all"
+            
+            filtered_posts = []
+            for submission in self.reddit.subreddit(region_subreddits).search(query, time_filter=search_time_filter, limit=limit*2):
+                # Apply minimum upvotes filter
+                if submission.score < min_upvotes:
+                    continue
+                
+                # Apply custom date range filter if specified
+                if time_filter == "custom" and start_date and end_date:
+                    submission_date = datetime.fromtimestamp(submission.created_utc).date()
+                    if not (start_date <= submission_date <= end_date):
+                        continue
+                
+                # If post passes all filters, add it to filtered posts
+                filtered_posts.append(submission)
+                if len(filtered_posts) >= limit:
+                    break
+            
+            # Process filtered posts
+            for submission in filtered_posts[:limit]:
                 posts.append({
                     # Basic info
                     "id": submission.id,
@@ -68,7 +127,6 @@ class RedditScraper:
         return posts
     
     def get_subreddit_posts(self, subreddit: str, limit: int = 50) -> List[Dict]:
-        """Get recent posts from a specific subreddit"""
         rate_limiter.wait_if_needed('reddit')  # Rate limiting
         
         posts = []

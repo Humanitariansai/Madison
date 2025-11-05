@@ -41,7 +41,8 @@ class DataStore:
                 self.db.posts.insert_one(post_data)
             else:
                 # Old format - convert to legacy structure for compatibility
-                self.db.posts.insert_one({
+                # Start with a base set of fields
+                doc = {
                     "id": post_data.get("id"),
                     "platform": post_data.get("platform"),
                     "title": post_data.get("title"),
@@ -51,17 +52,24 @@ class DataStore:
                     "engagement_metrics": post_data.get("metrics", {}),
                     "created_at": post_data.get("created_at"),
                     "scraped_at": datetime.now()
-                })
+                }
+                
+                # Preserve test-related fields
+                if "is_test_data" in post_data:
+                    doc["is_test_data"] = post_data["is_test_data"]
+                if "test_run_id" in post_data:
+                    doc["test_run_id"] = post_data["test_run_id"]
+                    
+                self.db.posts.insert_one(doc)
             return True
         except DuplicateKeyError:
             return False  # Duplicate
     
     def search_posts(self, keyword: str, limit: int = 100) -> List[Dict]:
-        """Search stored posts"""
         results = list(self.db.posts.find(
             {"$or": [
-                {"title": {"$regex": keyword, "$options": "i"}},
-                {"content": {"$regex": keyword, "$options": "i"}}
+                {"title": {"$regex": f".*{keyword}.*", "$options": "i"}},
+                {"content": {"$regex": f".*{keyword}.*", "$options": "i"}}
             ]},
             sort=[("created_at", -1)],
             limit=limit

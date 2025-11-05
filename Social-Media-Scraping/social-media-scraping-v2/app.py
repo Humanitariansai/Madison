@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-Reddit Brand Scraper - Streamlit Web Interface
-A simple web frontend for scraping Reddit data about brands
-"""
-
 import streamlit as st
 import pandas as pd
 import sys
@@ -11,13 +6,10 @@ import os
 from datetime import datetime
 import time
 
-# Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from scrapers.reddit_scraper import RedditScraper
 from storage.db import DataStore
-
-# Page config
 st.set_page_config(
     page_title="Reddit Brand Scraper",
     page_icon="🔍",
@@ -63,7 +55,6 @@ st.markdown("""
 
 @st.cache_resource
 def initialize_components():
-    """Initialize Reddit scraper and database connection"""
     try:
         reddit_scraper = RedditScraper()
         db_store = DataStore()
@@ -72,7 +63,6 @@ def initialize_components():
         return None, None, str(e)
 
 def format_post_preview(posts):
-    """Format posts for preview table"""
     if not posts:
         return pd.DataFrame()
     
@@ -146,11 +136,52 @@ def main():
         )
         
         # Time filter
-        time_filter = st.selectbox(
-            "Time Period",
-            ["week", "month", "year", "all"],
+        time_filter_type = st.radio(
+            "Time Filter Type",
+            ["Preset", "Custom Range"],
             index=0,
-            help="Filter posts by time period"
+            help="Choose between preset time periods or custom date range"
+        )
+        
+        if time_filter_type == "Preset":
+            time_filter = st.selectbox(
+                "Time Period",
+                ["week", "month", "year", "all"],
+                index=0,
+                help="Filter posts by time period"
+            )
+            start_date = None
+            end_date = None
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                start_date = st.date_input(
+                    "Start Date",
+                    help="Start date for custom range"
+                )
+            with col2:
+                end_date = st.date_input(
+                    "End Date",
+                    help="End date for custom range"
+                )
+            time_filter = "custom"
+
+        # Engagement filters
+        st.subheader("📊 Engagement Filters")
+        min_upvotes = st.number_input(
+            "Minimum Upvotes",
+            min_value=0,
+            value=0,
+            help="Filter posts with at least this many upvotes"
+        )
+
+        # Region filter
+        st.subheader("🌍 Region Filter")
+        selected_regions = st.multiselect(
+            "Filter by Region",
+            ["Global", "North America", "Europe", "Asia", "Oceania", "South America", "Africa"],
+            default=["Global"],
+            help="Select specific regions (based on subreddit categories and flairs)"
         )
         
         st.markdown("---")
@@ -192,10 +223,15 @@ def main():
                 status_text.text("🔍 Searching Reddit...")
                 progress_bar.progress(25)
                 
-                # Search Reddit
+                # Search Reddit with filters
                 posts = reddit_scraper.search_subreddits(
-                    brand_name, 
-                    limit=num_posts
+                    query=brand_name,
+                    limit=num_posts,
+                    time_filter=time_filter,
+                    start_date=start_date if time_filter == "custom" else None,
+                    end_date=end_date if time_filter == "custom" else None,
+                    min_upvotes=min_upvotes,
+                    regions=None if "Global" in selected_regions else selected_regions
                 )
                 
                 progress_bar.progress(75)

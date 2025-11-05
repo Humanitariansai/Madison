@@ -12,6 +12,7 @@ class RateLimiter:
         self.min_intervals = {
             'twitter': 1.0,  # 1 second between Twitter calls
             'reddit': 0.5,   # 0.5 seconds between Reddit calls
+            'linkedin': 2.0, # 2 seconds between LinkedIn calls (more conservative)
         }
     
     def wait_if_needed(self, api_name: str):

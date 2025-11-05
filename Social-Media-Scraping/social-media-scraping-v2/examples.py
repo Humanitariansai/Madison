@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-Usage examples for the Social Media Scraping tool
-Run this file to see common usage patterns
-"""
-
 import sys
 import os
 from datetime import datetime
@@ -16,7 +11,6 @@ from scrapers.twitter_scraper import TwitterScraper
 from storage.db import DataStore
 
 def example_1_basic_reddit_scraping():
-    """Example 1: Basic Reddit scraping"""
     print("📱 Example 1: Basic Reddit Scraping")
     print("-" * 40)
     
@@ -30,7 +24,6 @@ def example_1_basic_reddit_scraping():
     print()
 
 def example_2_specific_subreddit():
-    """Example 2: Get posts from specific subreddit"""
     print("🐍 Example 2: Python Subreddit Posts")
     print("-" * 40)
     

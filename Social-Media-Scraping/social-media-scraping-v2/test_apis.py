@@ -41,7 +41,6 @@ def test_twitter_api():
         return False
 
 def test_reddit_api():
-    """Test Reddit API connection"""
     print("\n🔴 Testing Reddit API...")
     
     client_id = os.getenv("REDDIT_CLIENT_ID")
