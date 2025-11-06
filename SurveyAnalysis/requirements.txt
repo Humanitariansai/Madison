@@ -1,0 +1,33 @@
+# ============================================
+# SURVEY ANALYSIS PLATFORM - DEPENDENCIES
+# ============================================
+
+# Week 1 - Core Data Processing
+pandas==2.1.0              # Data manipulation and analysis
+numpy==1.24.3              # Numerical computing
+
+# Week 1 - AI/ML APIs
+openai==1.3.0              # OpenAI API for sentiment analysis
+
+# Week 1 - Visualization
+plotly==5.17.0             # Interactive charts and graphs
+matplotlib==3.8.0          # Static plots and word clouds
+
+# Week 1 - Web Dashboard
+streamlit==1.28.0          # Web application framework
+
+# Week 1 - Configuration
+python-dotenv==1.0.0       # Environment variable management
+
+# Week 2 - Machine Learning (install later)
+scikit-learn==1.3.0        # ML algorithms for clustering and classification
+
+# Week 2 - Additional NLP (install later)
+wordcloud==1.9.2           # Word cloud generation
+
+# Week 2 - PDF Generation (install later)
+reportlab==4.0.5           # PDF report creation
+fpdf2==2.7.6               # Alternative PDF library
+
+# Week 2 - Enhanced Data Processing (install later)
+openpyxl==3.1.2            # Excel file support
