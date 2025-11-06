@@ -1,0 +1,11 @@
+respondent_id,age,satisfaction_rating,recommend,service_quality,feedback
+1,25,5,Yes,Excellent,The service was amazing! Very happy with everything.
+2,34,4,Yes,Good,Good experience overall. Minor delays but acceptable.
+3,28,2,No,Poor,Very disappointed. Long wait times and unhelpful staff.
+4,45,5,Yes,Excellent,Outstanding service! Will definitely come back.
+5,31,3,Maybe,Average,It was okay. Nothing special but not bad either.
+6,52,1,No,Very Poor,Terrible experience. Would not recommend to anyone.
+7,29,5,Yes,Excellent,Loved it! Staff was friendly and efficient.
+8,38,4,Yes,Good,Pretty good. A few small issues but overall satisfied.
+9,41,2,No,Poor,Not happy with the service. Expected much better.
+10,27,5,Yes,Excellent,Perfect! Exceeded my expectations in every way.
