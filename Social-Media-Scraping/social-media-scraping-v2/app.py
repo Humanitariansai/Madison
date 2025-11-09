@@ -9,9 +9,11 @@ import time
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from scrapers.reddit_scraper import RedditScraper
+from scrapers.linkedin_scraper import LinkedInScraper
 from storage.db import DataStore
+
 st.set_page_config(
-    page_title="Reddit Brand Scraper",
+    page_title="Social Media Brand Scraper",
     page_icon="🔍",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -57,10 +59,11 @@ st.markdown("""
 def initialize_components():
     try:
         reddit_scraper = RedditScraper()
+        linkedin_scraper = LinkedInScraper()
         db_store = DataStore()
-        return reddit_scraper, db_store, None
+        return reddit_scraper, linkedin_scraper, db_store, None
     except Exception as e:
-        return None, None, str(e)
+        return None, None, None, str(e)
 
 def format_post_preview(posts):
     if not posts:
@@ -98,11 +101,19 @@ def format_post_preview(posts):
 
 def main():
     # Header
-    st.markdown('<h1 class="main-header">🔍 Reddit Brand Scraper</h1>', unsafe_allow_html=True)
-    st.markdown("**Search for brand mentions across Reddit and save to your database**")
+    st.markdown('<h1 class="main-header">🔍 Social Media Brand Scraper</h1>', unsafe_allow_html=True)
+    st.markdown("**Search for brand mentions across social media platforms and save to your database**")
     
     # Initialize components
-    reddit_scraper, db_store, error = initialize_components()
+    reddit_scraper, linkedin_scraper, db_store, error = initialize_components()
+    
+    # Platform selection
+    platform = st.sidebar.selectbox(
+        "Select Platform",
+        ["Reddit", "LinkedIn"],
+        index=0,
+        help="Choose which social media platform to scrape"
+    )
     
     if error:
         st.error(f"❌ **Setup Error**: {error}")
@@ -118,12 +129,21 @@ def main():
     with st.sidebar:
         st.header("⚙️ Search Settings")
         
-        # Brand search input
-        brand_name = st.text_input(
+        # Brand/keyword search input
+        search_query = st.text_input(
             "Brand/Keyword to Search",
             placeholder="e.g., Apple, Tesla, Nike",
-            help="Enter the brand name you want to search for on Reddit"
+            help=f"Enter the brand or keywords you want to search for on {platform}"
         )
+        
+        # LinkedIn-specific options
+        if platform == "LinkedIn":
+            search_type = st.selectbox(
+                "Search Type",
+                ["keywords", "hashtag"],
+                index=0,
+                help="Choose whether to search by keywords or hashtag"
+            )
         
         # Number of posts
         num_posts = st.slider(
