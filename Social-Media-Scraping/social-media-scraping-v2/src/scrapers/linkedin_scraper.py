@@ -1,7 +1,11 @@
 import os
 import time
 from datetime import datetime
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
+import hashlib
+import re
+import platform
+from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -10,8 +14,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from shutil import which
 
 class LinkedInScraper:
     def __init__(self):
@@ -23,659 +29,750 @@ class LinkedInScraper:
     def initialize_browser(self):
         """Initialize and return a Chrome browser instance"""
         chrome_options = Options()
-        # Add options for better performance/reliability
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
-        # Uncomment below line to run in headless mode
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        # Uncomment for headless mode
         # chrome_options.add_argument('--headless')
         
-        # Initialize Chrome with automatic driver management
-        driver_install_path = ChromeDriverManager().install()
-
-        # webdriver-manager sometimes returns a path to a NOTICE file (e.g. THIRD_PARTY_NOTICES.chromedriver)
-        # or a directory. Detect that case and try to locate the actual chromedriver binary.
-        driver_path = driver_install_path
         try:
-            # If install returned a directory, look for an executable named like 'chromedriver'
-            if os.path.isdir(driver_install_path):
-                for fname in os.listdir(driver_install_path):
-                    if fname.startswith('chromedriver'):
-                        candidate = os.path.join(driver_install_path, fname)
-                        if os.path.isfile(candidate):
-                            driver_path = candidate
-                            break
-
-            # If install returned a file but it's not executable or is a NOTICE file, search parent dir
-            if (not os.access(driver_path, os.X_OK)) or driver_path.endswith('THIRD_PARTY_NOTICES.chromedriver'):
-                parent = os.path.dirname(driver_install_path)
-                for root, dirs, files in os.walk(parent):
-                    for fname in files:
-                        if fname.startswith('chromedriver'):
-                            candidate = os.path.join(root, fname)
-                            if os.path.isfile(candidate):
-                                driver_path = candidate
-                                break
-                    if driver_path != driver_install_path:
-                        break
-
-            # Ensure driver binary is executable
+            # Try using Selenium 4's built-in driver manager (no external dependencies)
+            self.browser = webdriver.Chrome(options=chrome_options)
+        except Exception as e1:
+            print(f"Selenium's built-in manager failed: {e1}")
             try:
-                os.chmod(driver_path, 0o755)
-            except Exception:
-                # If chmod fails, continue and let Service raise a clearer error later
-                pass
-        except Exception:
-            # If anything unexpected happens while locating the binary, keep the original path
-            driver_path = driver_install_path
-
-        # Fallback: if the resolved path still looks wrong, try system chromedriver
-        if not os.path.isfile(driver_path) or not os.access(driver_path, os.X_OK):
-            # try to use 'chromedriver' from PATH
-            from shutil import which
-
-            system_path = which('chromedriver')
-            if system_path:
-                driver_path = system_path
-
-        service = Service(driver_path)
-        self.browser = webdriver.Chrome(service=service, options=chrome_options)
+                # Fallback to webdriver-manager with fix
+                driver_path = self._get_correct_driver_path()
+                service = Service(driver_path)
+                self.browser = webdriver.Chrome(service=service, options=chrome_options)
+            except Exception as e2:
+                print(f"All automatic methods failed: {e2}")
+                raise Exception(
+                    "Could not initialize ChromeDriver. Please install it manually:\n"
+                    "For Mac: brew install chromedriver\n"
+                    "Then run: xattr -d com.apple.quarantine $(which chromedriver)"
+                )
+        
+        # Add stealth scripts
+        self.browser.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        try:
+            self.browser.maximize_window()
+        except:
+            pass
         return self.browser
+    
+    def _get_correct_driver_path(self):
+        """Get the correct ChromeDriver path, handling webdriver-manager issues"""
+        import platform
+        from pathlib import Path
+        
+        try:
+            # First try webdriver-manager
+            installed_path = ChromeDriverManager().install()
+            
+            # If it's the THIRD_PARTY_NOTICES file, find the actual driver
+            if 'THIRD_PARTY_NOTICES' in installed_path or not os.access(installed_path, os.X_OK):
+                driver_dir = Path(installed_path).parent
+                
+                # Look for the actual ChromeDriver executable
+                possible_names = ['chromedriver', 'chromedriver.exe']
+                for name in possible_names:
+                    driver_file = driver_dir / name
+                    if driver_file.exists() and driver_file.is_file():
+                        driver_path = str(driver_file)
+                        # Make it executable on Unix-like systems
+                        if platform.system() != 'Windows':
+                            os.chmod(driver_path, 0o755)
+                        return driver_path
+                
+                # If not found in the same directory, search the parent directory
+                parent_dir = driver_dir.parent
+                for item in parent_dir.iterdir():
+                    if item.is_file() and 'chromedriver' in item.name.lower() and 'THIRD_PARTY' not in item.name:
+                        driver_path = str(item)
+                        if platform.system() != 'Windows':
+                            os.chmod(driver_path, 0o755)
+                        return driver_path
+            
+            # If the original path looks good, use it
+            if os.path.isfile(installed_path) and os.access(installed_path, os.X_OK):
+                return installed_path
+                
+        except Exception as e:
+            print(f"WebDriver manager failed: {e}")
+        
+        # Fallback: try to use system ChromeDriver
+        from shutil import which
+        system_driver = which('chromedriver')
+        if system_driver:
+            print("Using system ChromeDriver")
+            return system_driver
+        
+        # Last resort: manual download instruction
+        raise Exception(
+            "Could not find ChromeDriver. Please install it manually:\n"
+            "1. Download from: https://chromedriver.chromium.org/\n"
+            "2. For Mac with Homebrew: brew install chromedriver\n"
+            "3. For Mac manual: Download, extract, and run: xattr -d com.apple.quarantine chromedriver"
+        )
 
     def login(self) -> bool:
         """Login to LinkedIn"""
         try:
-            self.browser.get('https://www.linkedin.com/uas/login')
+            self.browser.get('https://www.linkedin.com/login')
+            time.sleep(2)
             
             # Find and fill username
-            username_elem = self.browser.find_element(By.ID, 'username')
+            username_elem = WebDriverWait(self.browser, 10).until(
+                EC.presence_of_element_located((By.ID, 'username'))
+            )
+            username_elem.clear()
             username_elem.send_keys(self.username)
             
             # Find and fill password
             password_elem = self.browser.find_element(By.ID, 'password')
+            password_elem.clear()
             password_elem.send_keys(self.password)
             password_elem.send_keys(Keys.RETURN)
             
-            return True
+            # Wait for login to complete
+            time.sleep(5)
+            
+            # Check if login was successful
+            if "feed" in self.browser.current_url or "mynetwork" in self.browser.current_url:
+                print("Login successful!")
+                return True
+            return False
+            
         except Exception as e:
             print(f"Login failed: {str(e)}")
             return False
 
-    def search_content(self, keywords: Union[str, List[str]], search_type: str = 'hashtag', max_posts: int = 10) -> List[Dict]:
+    def search_content(self, keywords: Union[str, List[str]], search_type: str = 'hashtag', 
+                      max_posts: int = 10, debug: bool = False) -> List[Dict]:
         """
         Search LinkedIn content by keywords or hashtag
-        
-        Args:
-            keywords: String for hashtag, or list of keywords for keyword search
-            search_type: 'hashtag' or 'keywords'
-            max_posts: Maximum number of posts to retrieve (default: 10)
-            
-        Returns:
-            List of dictionaries containing scraped data
         """
         print(f"\nInitializing search for: {keywords}")
+        
         if not self.browser:
             print("Initializing browser...")
             self.initialize_browser()
             print("Logging in to LinkedIn...")
             if not self.login():
                 raise Exception("Failed to login to LinkedIn")
-            print("Login successful!")
-            # Add a delay after login to ensure we're properly authenticated
             time.sleep(3)
 
         try:
-            # First ensure we're on the search page
-            self.browser.get('https://www.linkedin.com/search/results/content/')
-            time.sleep(2)
-
-            # Look for the search box
-            search_box = WebDriverWait(self.browser, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "input.search-global-typeahead__input"))
-            )
-            
-            # Clear any existing search
-            search_box.clear()
-            
-            # Convert keywords to search string
+            # Prepare search query
             if search_type == 'hashtag':
                 if isinstance(keywords, list):
-                    keywords = keywords[0]  # Take first keyword for hashtag search
-                search_query = f"#{keywords}"
+                    keywords = keywords[0]
+                search_query = keywords.replace('#', '').strip()
+                # For hashtags, go directly to the hashtag feed
+                url = f"https://www.linkedin.com/feed/hashtag/?keywords={search_query}"
+                print(f"Navigating to hashtag: #{search_query}")
+                self.browser.get(url)
+                time.sleep(4)
             else:
                 if isinstance(keywords, str):
                     keywords = [keywords]
                 search_query = ' '.join(keywords)
-            
-            print(f"Searching for: {search_query}")
-            
-            # Enter search terms and submit
-            search_box.send_keys(search_query)
-            search_box.send_keys(Keys.RETURN)
-            
-            # Wait for search results to load
-            WebDriverWait(self.browser, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".search-results-container, .scaffold-finite-scroll__content"))
-            )
-            
-            # Additional wait to ensure content loads
-            time.sleep(3)
-            
-            # Initialize posts list and tracking variables
-            posts = []
-            scroll_count = 0
-            max_scrolls = 30
-            last_height = self.browser.execute_script("return document.documentElement.scrollHeight")
-            
-            # Main scrolling and scraping loop
-            while len(posts) < max_posts and scroll_count < max_scrolls:
-                # Get current page content
-                soup = BeautifulSoup(self.browser.page_source, 'lxml')
                 
-                # Find main container
-                main_content = soup.find('div', {'class': 'search-results-container'})
-                if not main_content:
-                    main_content = soup.find('div', {'class': 'scaffold-finite-scroll__content'})
+                print(f"Searching for keywords: {search_query}")
                 
-                if main_content:
-                    # Find all post containers
-                    post_elements = main_content.find_all('div', {
-                        'class': ['feed-shared-update-v2', 'update-components-actor']
-                    })
+                # Method 1: Direct URL navigation to content search
+                encoded_query = search_query.replace(' ', '%20')
+                url = f"https://www.linkedin.com/search/results/content/?keywords={encoded_query}"
+                self.browser.get(url)
+                time.sleep(4)
+                
+                # If we're not on the content page, try the search box method
+                if "/search/results/content" not in self.browser.current_url:
+                    print("Retrying with search box method...")
+                    # Navigate to feed first
+                    self.browser.get('https://www.linkedin.com/feed/')
+                    time.sleep(3)
                     
-                    # Process new posts
-                    current_length = len(posts)
-                    for post_element in post_elements:
-                        # Extract data from post
-                        post_data = self._extract_post_data(post_element)
-                        if post_data and post_data not in posts:  # Check for duplicates
-                            posts.append(post_data)
-                            print(f"Found post {len(posts)}/{max_posts}")
-                            if len(posts) >= max_posts:
-                                break
-                
-                # Break if we found enough posts
-                if len(posts) >= max_posts:
-                    break
-                
-                # Scroll down
-                self.browser.execute_script("window.scrollTo(0, document.documentElement.scrollHeight);")
-                time.sleep(2)  # Wait for content to load
-                
-                # Get new height
-                new_height = self.browser.execute_script("return document.documentElement.scrollHeight")
-                
-                # If heights are the same and we haven't found new posts, we might be at the end
-                if new_height == last_height and len(posts) == current_length:
-                    scroll_count += 1
-                else:
-                    scroll_count = 0  # Reset counter if we made progress
-                    
-                last_height = new_height
-                
-                # Expand any "show more" buttons
-                self._expand_content()
+                    # Find and use the search box
+                    try:
+                        search_box = WebDriverWait(self.browser, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, 
+                                "input.search-global-typeahead__input"))
+                        )
+                        search_box.clear()
+                        search_box.send_keys(search_query)
+                        search_box.send_keys(Keys.RETURN)
+                        time.sleep(4)
+                        
+                        # After search, explicitly click on "Posts" tab
+                        self._click_posts_filter()
+                        
+                    except Exception as e:
+                        print(f"Search box method failed: {e}")
             
-            # Cleanup and return results
-            self.logout()
-            self.close()
-            return posts[:max_posts]  # Ensure we don't return more than requested
+            # Ensure we're viewing posts
+            self._ensure_posts_view()
             
-            # If we have enough posts, expand content and extract
-            if enough_posts:
-                # Only expand visible posts
-                self._expand_content()
-                
-                # Get posts from the page
-                soup = BeautifulSoup(self.browser.page_source, 'lxml')
-                posts = []
-                
-                # Find main container
-                main_content = soup.find('div', {'class': 'search-results-container'})
-                if not main_content:
-                    main_content = soup.find('div', {'class': 'scaffold-finite-scroll__content'})
-                
-                if main_content:
-                    # Find all post containers
-                    post_elements = main_content.find_all('div', {
-                        'class': ['feed-shared-update-v2', 'update-components-actor']
-                    })
-                    
-                    # Extract data from each post
-                    for post_element in post_elements[:max_posts]:
-                        post_data = self._extract_post_data(post_element)
-                        if post_data:
-                            posts.append(post_data)
-                
-                # Logout and close browser
-                self.close()
-                return posts
-                
-            # If we don't have enough posts after scrolling, try to get what we can
-            self._expand_content()
+            # Wait for posts to load
+            self._wait_for_posts_to_load()
             
-            # Get posts from the page
-            soup = BeautifulSoup(self.browser.page_source, 'lxml')
-            posts = []
+            # Collect posts with improved deduplication
+            posts = self._collect_posts_with_scroll(max_posts, debug)
             
-            # Find main container
-            main_content = soup.find('div', {'class': 'search-results-container'})
-            if not main_content:
-                main_content = soup.find('div', {'class': 'scaffold-finite-scroll__content'})
-            
-            if main_content:
-                # Find all post containers
-                post_elements = main_content.find_all('div', {
-                    'class': ['feed-shared-update-v2', 'update-components-actor']
-                })
-                
-                # Extract data from each post
-                for post_element in post_elements[:max_posts]:
-                    post_data = self._extract_post_data(post_element)
-                    if post_data:
-                        posts.append(post_data)
-            
-            # Logout and close browser
-            self.close()
+            print(f"\nTotal unique posts collected: {len(posts)}")
             return posts
             
         except Exception as e:
             print(f"Error during search: {str(e)}")
-            # If direct search fails, try using the URL method as fallback
+            # Try alternative direct navigation method
             try:
+                print("Trying alternative search method...")
                 if search_type == 'hashtag':
-                    if isinstance(keywords, list):
-                        keywords = keywords[0]
-                    link = f'https://www.linkedin.com/feed/hashtag/{keywords}/'
+                    # Direct hashtag URL
+                    clean_keyword = keywords[0] if isinstance(keywords, list) else keywords
+                    clean_keyword = clean_keyword.replace('#', '').strip()
+                    url = f"https://www.linkedin.com/feed/hashtag/?keywords={clean_keyword}"
                 else:
-                    if isinstance(keywords, str):
-                        keywords = [keywords]
-                    link = 'https://www.linkedin.com/search/results/content/?keywords=' + '%20'.join(keywords)
+                    # Direct content search URL
+                    search_terms = keywords if isinstance(keywords, list) else [keywords]
+                    query = '%20'.join(search_terms)
+                    url = f"https://www.linkedin.com/search/results/content/?keywords={query}&origin=SWITCH_SEARCH_VERTICAL"
                 
-                print(f"Trying direct URL: {link}")
-                self.browser.get(link)
-                time.sleep(3)
+                print(f"Direct navigation to: {url}")
+                self.browser.get(url)
+                time.sleep(5)
                 
-                self._scroll_page()
-                self._expand_content()
+                # Wait and collect
+                self._wait_for_posts_to_load()
+                posts = self._collect_posts_with_scroll(max_posts, debug)
                 
-                # Get posts from the page
-                soup = BeautifulSoup(self.browser.page_source, 'lxml')
-                posts = []
-                
-                # Find main container
-                main_content = soup.find('div', {'class': 'search-results-container'})
-                if not main_content:
-                    main_content = soup.find('div', {'class': 'scaffold-finite-scroll__content'})
-                
-                if main_content:
-                    # Find all post containers
-                    post_elements = main_content.find_all('div', {
-                        'class': ['feed-shared-update-v2', 'update-components-actor']
-                    })
-                    
-                    # Extract data from each post
-                    for post_element in post_elements[:max_posts]:
-                        post_data = self._extract_post_data(post_element)
-                        if post_data:
-                            posts.append(post_data)
-                
+                print(f"\nTotal unique posts collected: {len(posts)}")
                 return posts
                 
             except Exception as e2:
-                print(f"Both search methods failed: {str(e2)}")
+                print(f"Alternative method also failed: {str(e2)}")
                 return []
+        finally:
+            self.close()
 
-    def _scroll_page(self, scroll_count: int = 10, pause_time: int = 3, max_posts: int = 10):
-        """
-        Scroll the page to load more content
-        Returns True if enough posts are found, False otherwise
-        """
-        last_height = self.browser.execute_script("return document.body.scrollHeight")
+    def _ensure_posts_view(self):
+        """Ensure we're viewing posts, not other content types"""
+        current_url = self.browser.current_url
         
-        for _ in range(scroll_count):
-            # Check if we have enough posts before scrolling more
-            page_source = self.browser.page_source
-            soup = BeautifulSoup(page_source, 'lxml')
+        # Check if we're on a search results page but not on content/posts
+        if "/search/results/" in current_url and "/content" not in current_url:
+            print("Not on Posts view, attempting to switch...")
             
-            # Count available posts
-            post_items = []
-            containers = soup.find_all('div', {'class': ['search-results-container', 'scaffold-finite-scroll__content']})
-            for container in containers:
-                items = container.find_all(['div', 'article'], {
-                    'class': [
-                        'feed-shared-update-v2',
-                        'update-components-actor',
-                        'search-content-card',
-                        'feed-shared-update-v2__content',
-                        'relative',
-                        'occludable-update',
-                        'ember-view'
-                    ]
-                })
-                post_items.extend(items)
-            
-            # If we have enough posts, stop scrolling
-            if len(post_items) >= max_posts:
-                return True
-                
-            # Otherwise continue scrolling
-            self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(pause_time)
-            new_height = self.browser.execute_script("return document.body.scrollHeight")
-            if new_height == last_height:
-                break
-            last_height = new_height
-        
-        return False
-
-    def _expand_content(self):
-        """Click on 'see more' buttons to expand content"""
-        self.browser.find_element(By.TAG_NAME, 'body').send_keys(Keys.CONTROL + Keys.HOME)
-        time.sleep(1)
-        try:
-            # Get visible posts first
-            posts = self.browser.find_elements(By.CSS_SELECTOR, 
-                "[class*='feed-shared-update-v2'], [class*='search-content-card'], [class*='occludable-update']")
-            
-            # Only process visible posts
-            visible_posts = []
-            for post in posts:
-                try:
-                    if post.is_displayed():
-                        visible_posts.append(post)
-                except:
-                    continue
-            
-            # Try both old and new class names for "see more" buttons within visible posts
-            button_classes = [
-                'feed-shared-inline-show-more-text__see-more-less-toggle',
-                'inline-show-more-text__button',
-                'see-more-less-button'
-            ]
-            
-            for post in visible_posts:
-                try:
-                    for class_name in button_classes:
-                        try:
-                            buttons = post.find_elements(By.CLASS_NAME, class_name)
-                            for button in buttons:
-                                try:
-                                    if button.is_displayed():
-                                        self.browser.execute_script("arguments[0].click();", button)
-                                        time.sleep(0.2)  # Shorter pause between clicks
-                                except:
-                                    continue
-                        except:
-                            continue
-                except:
-                    continue
-                    
-        except Exception as e:
-            print(f"Error expanding content: {str(e)}")
-
-    def _extract_post_data(self, post_element) -> Dict:
-        """Extract the minimal required data from a BeautifulSoup post element.
-
-        Returns a dict with keys:
-            - author: str or None
-            - posted_seconds_ago: int or None (seconds between now and post time)
-            - description: str or None
-            - likes: int (0 if not found)
-            - comments: int (0 if not found)
-        """
-        try:
-            now = datetime.utcnow()
-
-            author = None
-            posted_seconds = None
-            description = None
-            likes = 0
-            comments = 0
-            author_headline = None
-
-            # --- Author ---
-            author_section = post_element.find(['div', 'span'], {
-                'class': [
-                    'update-components-actor__meta',
-                    'feed-shared-actor__meta',
-                    'update-components-actor__title',
-                    'feed-shared-actor__title'
-                ]
-            })
-
-            if author_section:
-                author_name = author_section.find(['span', 'a'], {
-                    'class': [
-                        'update-components-actor__name',
-                        'feed-shared-actor__name',
-                        'update-components-actor__title',
-                        'feed-shared-actor__title',
-                        'app-aware-link'
-                    ]
-                })
-                if author_name:
-                    author = author_name.get_text(strip=True)
-
-                # Try to get author headline/description
-                author_desc = author_section.find(['span', 'div'], {
-                    'class': [
-                        'update-components-actor__description',
-                        'feed-shared-actor__description',
-                        'update-components-actor__sub-description',
-                        'feed-shared-actor__sub-description'
-                    ]
-                })
-                if author_desc:
-                    author_headline = author_desc.get_text(strip=True)
-
-            # Try fallback selectors for author
-            if not author:
-                maybe = post_element.find(['a', 'span'], {'class': ['app-aware-link', 'ember-view']})
-                if maybe:
-                    author = maybe.get_text(strip=True)
-
-            # --- Time ---
-            # Prefer <time datetime="..."> if available
-            time_el = post_element.find('time')
-            time_text = None
-            if time_el:
-                datetime_attr = time_el.get('datetime')
-                if datetime_attr:
-                    try:
-                        # parse ISO-like datetime
-                        post_dt = datetime.fromisoformat(datetime_attr.replace('Z', '+00:00'))
-                        posted_seconds = int((now - post_dt).total_seconds())
-                    except Exception:
-                        # fallback to text
-                        time_text = time_el.get_text(strip=True)
+            # Try multiple methods to get to Posts
+            if not self._click_posts_filter():
+                # If clicking Posts filter didn't work, try modifying the URL
+                if "/search/results/people" in current_url:
+                    new_url = current_url.replace("/people", "/content")
+                elif "/search/results/companies" in current_url:
+                    new_url = current_url.replace("/companies", "/content")
+                elif "/search/results/all" in current_url:
+                    new_url = current_url.replace("/all", "/content")
                 else:
-                    time_text = time_el.get_text(strip=True)
-
-            if posted_seconds is None and not time_text:
-                # search for time-like text in small tags/spans
-                for candidate in post_element.find_all(['span', 'div'], limit=10):
-                    t = candidate.get_text(strip=True)
-                    if t and any(suffix in t.lower() for suffix in ['h', 'm', 'd', 'w', 'mo', 'y', 'min', 'hr', 'secs', 'sec', 'hour', 'day', 'week', 'month', 'year']):
-                        time_text = t
-                        break
-
-            if time_text:
-                posted_seconds = self._parse_relative_time_to_seconds(time_text)
-
-            # --- Description / post text ---
-            content_texts = []
-            # Common selectors for LinkedIn post body
-            content_selectors = [
-                ('div', ['update-components-text', 'feed-shared-update-v2__description']),
-                ('span', ['break-words']),
-                ('div', ['feed-shared-text', 'feed-shared-update-v2__commentary']),
-                ('p', ['attributed-text-segment__text'])
+                    # Generic replacement
+                    new_url = re.sub(r'/search/results/\w+/', '/search/results/content/', current_url)
+                
+                print(f"Navigating directly to content URL: {new_url}")
+                self.browser.get(new_url)
+                time.sleep(3)
+    
+    def _click_posts_filter(self) -> bool:
+        """Click on Posts filter/tab to show only posts"""
+        try:
+            # Try different selectors for the Posts button/filter
+            posts_selectors = [
+                "//button[contains(text(), 'Posts')]",
+                "//button[contains(@aria-label, 'Posts')]",
+                "//a[contains(text(), 'Posts')]",
+                "//button[contains(text(), 'Content')]",
+                "//button[@aria-label='View only Posts']",
+                "//button[contains(@class, 'search-reusables__filter-pill-button') and contains(., 'Posts')]",
+                "//button[contains(@id, 'POSTS')]",
+                "//div[@role='tablist']//button[contains(., 'Posts')]"
             ]
-            for tag, classes in content_selectors:
-                for el in post_element.find_all(tag, {'class': classes}):
-                    text = el.get_text(separator=' ', strip=True)
-                    if text:
-                        content_texts.append(text)
-
-            # Fallback: try any element with long text
-            if not content_texts:
-                for el in post_element.find_all(['p', 'span', 'div']):
-                    txt = el.get_text(strip=True)
-                    if txt and len(txt) > 40:
-                        content_texts.append(txt)
-                        break
-
-            if content_texts:
-                description = ' '.join(content_texts).strip()
-
-            # --- Likes & comments ---
-            full_text = ' '.join([t.get_text(' ', strip=True) for t in post_element.find_all(['span', 'button', 'a', 'li', 'div'])])
-
-            # Try to find patterns like '1,234 likes' or '1,234 reactions' and '123 comments'
-            import re
-
-            def _num_from_match(m):
-                if not m:
-                    return 0
-                s = m.group(1)
-                s = s.replace(',', '').strip()
+            
+            for selector in posts_selectors:
                 try:
-                    return int(s)
-                except Exception:
-                    try:
-                        return int(float(s))
-                    except Exception:
-                        return 0
-
-            like_match = re.search(r"([0-9,]+)\s*(?:likes?|reactions?)", full_text, flags=re.I)
-            if not like_match:
-                # sometimes likes are shown as just numbers near reaction icons
-                like_match = re.search(r"([0-9,]+)\s*(?:reactions?)", full_text, flags=re.I)
-            likes = _num_from_match(like_match)
-
-            comment_match = re.search(r"([0-9,]+)\s*(?:comments?)", full_text, flags=re.I)
-            if not comment_match:
-                # sometimes comments appear as 'View all 12 comments' or similar
-                comment_match = re.search(r"view all\s*([0-9,]+)\s*comments", full_text, flags=re.I)
-            comments = _num_from_match(comment_match)
-
-            engagement_str = None
+                    posts_button = self.browser.find_element(By.XPATH, selector)
+                    if posts_button.is_displayed():
+                        self.browser.execute_script("arguments[0].click();", posts_button)
+                        print("Clicked on Posts filter")
+                        time.sleep(3)
+                        return True
+                except:
+                    continue
+            
+            # Alternative: Look for the tab navigation and click Posts
             try:
-                engagement_parts = []
-                if likes:
-                    engagement_parts.append(f"{likes} likes")
-                if comments:
-                    engagement_parts.append(f"{comments} comments")
-                if engagement_parts:
-                    engagement_str = ' | '.join(engagement_parts)
-            except Exception:
-                engagement_str = None
+                # Find the search navigation tabs
+                nav_items = self.browser.find_elements(By.CSS_SELECTOR, 
+                    "div.search-navigation-panel__button-container button, div.search-nav-panel button")
+                for item in nav_items:
+                    if "Posts" in item.text or "Content" in item.text:
+                        self.browser.execute_script("arguments[0].click();", item)
+                        print("Clicked on Posts in navigation")
+                        time.sleep(3)
+                        return True
+            except:
+                pass
+            
+            return False
+            
+        except Exception as e:
+            print(f"Could not click Posts filter: {e}")
+            return False
 
-            return {
-                'author': author,
-                'author_headline': author_headline,
-                'posted_seconds_ago': int(posted_seconds) if posted_seconds is not None else None,
-                'description': description,
-                'content': description,  # backward-compatible alias
-                'likes': likes,
-                'comments': comments,
-                'engagement': engagement_str,
-                'link': None
+    def _wait_for_posts_to_load(self):
+        """Wait for posts to load on the page"""
+        try:
+            # Wait for post containers to appear
+            post_selectors = [
+                "div.feed-shared-update-v2",
+                "div.occludable-update", 
+                "div[data-id]",
+                "article.relative",
+                "div[data-urn]"
+            ]
+            
+            for selector in post_selectors:
+                try:
+                    WebDriverWait(self.browser, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+                    print(f"Posts loaded with selector: {selector}")
+                    return True
+                except:
+                    continue
+            
+            print("Warning: Could not confirm posts loaded")
+            return False
+        except:
+            return False
+
+    def _collect_posts_with_scroll(self, max_posts: int, debug: bool = False) -> List[Dict]:
+        """Collect posts with intelligent scrolling and deduplication"""
+        posts = []
+        seen_content_hashes = set()
+        scroll_attempts = 0
+        max_scroll_attempts = 30
+        consecutive_no_new_posts = 0
+        max_consecutive_no_new = 5
+        
+        # Check current page type
+        current_url = self.browser.current_url
+        is_hashtag_page = "/feed/hashtag" in current_url
+        is_content_search = "/search/results/content" in current_url
+        
+        print(f"Page type - Hashtag: {is_hashtag_page}, Content Search: {is_content_search}")
+        
+        while len(posts) < max_posts and scroll_attempts < max_scroll_attempts:
+            scroll_attempts += 1
+            
+            # Get current page height
+            old_height = self.browser.execute_script("return document.body.scrollHeight")
+            
+            # Parse current posts
+            soup = BeautifulSoup(self.browser.page_source, 'html.parser')
+            
+            # Different selectors for different page types
+            if is_hashtag_page:
+                # Hashtag feed specific selectors
+                post_selectors = [
+                    "div.feed-shared-update-v2",
+                    "div.occludable-update",
+                    "article[data-id]",
+                    "div[class*='feed-shared-update']"
+                ]
+            elif is_content_search:
+                # Search results specific selectors
+                post_selectors = [
+                    "div.reusable-search__result-container",
+                    "div.search-results__result-item",
+                    "li.reusable-search__result-container",
+                    "div.feed-shared-update-v2",
+                    "div[data-chameleon-result-urn]",
+                    "div[data-id]"
+                ]
+            else:
+                # Generic selectors
+                post_selectors = [
+                    "div[data-id]",
+                    "div.feed-shared-update-v2",
+                    "div.occludable-update",
+                    "article.relative",
+                    "div[class*='feed-shared-update']",
+                    "li.feed-item",
+                    "div[data-urn]"
+                ]
+            
+            post_elements = []
+            for selector in post_selectors:
+                elements = soup.select(selector)
+                if elements:
+                    post_elements.extend(elements)
+                    if debug and elements:
+                        print(f"Found {len(elements)} elements with selector: {selector}")
+            
+            # Remove duplicates while preserving order
+            seen_ids = set()
+            unique_elements = []
+            for elem in post_elements:
+                # Create unique identifier for element
+                elem_id = (elem.get('data-id') or 
+                          elem.get('data-urn') or 
+                          elem.get('data-chameleon-result-urn') or
+                          str(hash(str(elem)[:500])))
+                          
+                if elem_id not in seen_ids:
+                    seen_ids.add(elem_id)
+                    unique_elements.append(elem)
+            
+            if debug:
+                print(f"Scroll {scroll_attempts}: Found {len(unique_elements)} unique post elements")
+            
+            new_posts_count = 0
+            for element in unique_elements:
+                if len(posts) >= max_posts:
+                    break
+                    
+                post_data = self._extract_post_data_improved(element)
+                if not post_data:
+                    continue
+                
+                # Create content hash for deduplication
+                content_hash = self._create_content_hash(post_data)
+                if content_hash in seen_content_hashes:
+                    if debug:
+                        print(f"Skipping duplicate post from {post_data.get('author', 'Unknown')}")
+                    continue
+                
+                seen_content_hashes.add(content_hash)
+                posts.append(post_data)
+                new_posts_count += 1
+                print(f"Collected post {len(posts)}/{max_posts} from {post_data.get('author', 'Unknown')}")
+            
+            # Check if we got new posts
+            if new_posts_count == 0:
+                consecutive_no_new_posts += 1
+                if consecutive_no_new_posts >= max_consecutive_no_new:
+                    print("No new posts found after multiple scrolls, stopping...")
+                    break
+            else:
+                consecutive_no_new_posts = 0
+            
+            if len(posts) >= max_posts:
+                break
+            
+            # Expand "see more" buttons before scrolling
+            self._expand_see_more_buttons()
+            
+            # Scroll down - try multiple scroll methods
+            self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+            
+            # Check if page height changed
+            new_height = self.browser.execute_script("return document.body.scrollHeight")
+            if new_height == old_height:
+                # Try alternative scroll methods
+                try:
+                    # Scroll to last element
+                    all_posts = self.browser.find_elements(By.CSS_SELECTOR, 
+                        "div[data-id], div.feed-shared-update-v2, div.occludable-update, div.reusable-search__result-container")
+                    if all_posts:
+                        self.browser.execute_script("arguments[0].scrollIntoView(true);", all_posts[-1])
+                        time.sleep(2)
+                    
+                    # Try clicking "Show more results" if available
+                    try:
+                        show_more = self.browser.find_element(By.XPATH, 
+                            "//button[contains(text(), 'Show more results')]")
+                        self.browser.execute_script("arguments[0].click();", show_more)
+                        time.sleep(2)
+                    except:
+                        pass
+                        
+                except:
+                    pass
+        
+        return posts[:max_posts]
+
+    def _create_content_hash(self, post_data: Dict) -> str:
+        """Create a hash for deduplication based on post content"""
+        unique_string = f"{post_data.get('author', '')}_{post_data.get('content', '')[:200] if post_data.get('content') else ''}_{post_data.get('posted_time', '')}"
+        return hashlib.md5(unique_string.encode()).hexdigest()
+
+    def _extract_post_data_improved(self, element) -> Optional[Dict]:
+        """Improved post data extraction with better selectors"""
+        try:
+            # Initialize data
+            data = {
+                'author': None,
+                'author_headline': None,
+                'posted_time': None,
+                'content': None,
+                'likes': 0,
+                'comments': 0,
+                'reposts': 0,
+                'link': None,
+                'post_id': None
             }
-
+            
+            # Extract post ID
+            data['post_id'] = (element.get('data-id') or 
+                              element.get('data-urn') or 
+                              element.get('id'))
+            
+            # Extract author information - IMPROVED
+            author_selectors = [
+                "span.feed-shared-actor__name span[aria-hidden='true']",
+                "span.update-components-actor__name span[aria-hidden='true']",
+                "div.update-components-actor__container span[aria-hidden='true']",
+                "span.feed-shared-actor__name",
+                "span.update-components-actor__name",
+                "a.app-aware-link span[dir='ltr']",
+                "span[class*='actor__name']",
+                "div.update-components-actor a.app-aware-link",
+                "h3.actor-name",
+                "span.visually-hidden"  # Sometimes the name is in visually-hidden spans
+            ]
+            
+            for selector in author_selectors:
+                author_elem = element.select_one(selector)
+                if author_elem:
+                    author_text = author_elem.get_text(strip=True)
+                    # Filter out non-author text
+                    if author_text and not any(skip in author_text.lower() for skip in ['view', 'profile', 'image', 'logo']):
+                        data['author'] = author_text
+                        break
+            
+            # If still no author, try text extraction from actor container
+            if not data['author']:
+                actor_container = element.select_one("div.update-components-actor, div.feed-shared-actor")
+                if actor_container:
+                    # Get first substantial text that looks like a name
+                    for text_elem in actor_container.find_all(text=True):
+                        text = text_elem.strip()
+                        if text and len(text) > 2 and len(text) < 100 and not text.startswith('•'):
+                            data['author'] = text
+                            break
+            
+            # Extract author headline - IMPROVED
+            headline_selectors = [
+                "span.feed-shared-actor__description",
+                "span.update-components-actor__description", 
+                "span[class*='actor__sub-description']",
+                "div.feed-shared-actor__meta span[aria-hidden='true']",
+                "div.update-components-actor__meta span"
+            ]
+            
+            for selector in headline_selectors:
+                headline_elem = element.select_one(selector)
+                if headline_elem:
+                    headline_text = headline_elem.get_text(strip=True)
+                    # Clean up the headline
+                    if headline_text and '•' in headline_text:
+                        # Take the part before the bullet point (usually the job title)
+                        headline_text = headline_text.split('•')[0].strip()
+                    if headline_text and len(headline_text) < 200:
+                        data['author_headline'] = headline_text
+                        break
+            
+            # Extract time - IMPROVED
+            time_elem = element.select_one("time")
+            if time_elem:
+                # Try to get the actual time text, not the full accessibility text
+                time_text = time_elem.get_text(strip=True)
+                if '•' in time_text:
+                    # Extract just the time part (e.g., "2h" from "2h • Edited")
+                    time_parts = time_text.split('•')
+                    for part in time_parts:
+                        if any(t in part.lower() for t in ['ago', 'h', 'd', 'w', 'm', 'y']):
+                            data['posted_time'] = part.strip()
+                            break
+                else:
+                    data['posted_time'] = time_text
+            else:
+                # Look for relative time in actor description
+                time_pattern = r'\d+[smhdw]\s*(?:ago)?|\d+\s*(?:second|minute|hour|day|week|month|year)s?\s*ago'
+                for elem in element.select("span[class*='sub-description'], div[class*='actor__meta']"):
+                    text = elem.get_text(strip=True)
+                    match = re.search(time_pattern, text, re.I)
+                    if match:
+                        data['posted_time'] = match.group(0)
+                        break
+            
+            # Extract post content - IMPROVED
+            content_selectors = [
+                "div.feed-shared-text span[dir='ltr']",
+                "div.update-components-text span.break-words",
+                "div[class*='feed-shared-update-v2__description'] span[dir='ltr']",
+                "div.feed-shared-text__text-view span",
+                "span[class*='break-words']",
+                "div.feed-shared-update-v2__commentary",
+                "div.feed-shared-text"
+            ]
+            
+            content_parts = []
+            for selector in content_selectors:
+                content_elems = element.select(selector)
+                for elem in content_elems:
+                    text = elem.get_text(strip=True)
+                    # Filter out UI elements and very short text
+                    if text and len(text) > 20 and not text.startswith('hashtag#'):
+                        # Clean hashtags
+                        text = re.sub(r'hashtag#(\w+)', r'#\1', text)
+                        content_parts.append(text)
+            
+            if content_parts:
+                # Deduplicate content parts
+                unique_parts = []
+                for part in content_parts:
+                    # Check if this part is not a substring of existing parts
+                    is_duplicate = False
+                    for existing in unique_parts:
+                        if part in existing or existing in part:
+                            is_duplicate = True
+                            if len(part) > len(existing):
+                                # Replace with longer version
+                                unique_parts.remove(existing)
+                                unique_parts.append(part)
+                            break
+                    if not is_duplicate:
+                        unique_parts.append(part)
+                
+                # Join and clean up
+                if unique_parts:
+                    content = ' '.join(unique_parts)
+                    # Remove excessive whitespace
+                    content = re.sub(r'\s+', ' ', content).strip()
+                    data['content'] = content
+            
+            # Extract engagement metrics - IMPROVED
+            engagement_selectors = {
+                'likes': [
+                    "button[aria-label*='reaction'] span",
+                    "span[class*='social-counts-reactions__count']",
+                    "button[class*='social-actions__reaction'] span",
+                    "span.social-details-social-counts__reactions-count"
+                ],
+                'comments': [
+                    "button[aria-label*='comment'] span",
+                    "button[class*='comment'] span",
+                    "span.social-details-social-counts__comments"
+                ],
+                'reposts': [
+                    "button[aria-label*='repost'] span",
+                    "button[class*='repost'] span",
+                    "span.social-details-social-counts__reposts"
+                ]
+            }
+            
+            for metric, selectors in engagement_selectors.items():
+                for selector in selectors:
+                    try:
+                        elems = element.select(selector)
+                        for elem in elems:
+                            text = elem.get_text(strip=True)
+                            # Extract number from text
+                            match = re.search(r'([\d,]+)', text)
+                            if match:
+                                data[metric] = int(match.group(1).replace(',', ''))
+                                break
+                        if data[metric] > 0:
+                            break
+                    except:
+                        continue
+            
+            # Additional parsing for engagement if not found
+            if data['likes'] == 0 or data['comments'] == 0:
+                # Look for text patterns in the entire element
+                full_text = element.get_text(' ', strip=True)
+                
+                if data['likes'] == 0:
+                    likes_match = re.search(r'([\d,]+)\s*(?:reactions?|likes?)', full_text, re.I)
+                    if likes_match:
+                        try:
+                            data['likes'] = int(likes_match.group(1).replace(',', ''))
+                        except:
+                            pass
+                
+                if data['comments'] == 0:
+                    comments_match = re.search(r'([\d,]+)\s*comments?', full_text, re.I)
+                    if comments_match:
+                        try:
+                            data['comments'] = int(comments_match.group(1).replace(',', ''))
+                        except:
+                            pass
+                
+                if data['reposts'] == 0:
+                    reposts_match = re.search(r'([\d,]+)\s*reposts?', full_text, re.I)
+                    if reposts_match:
+                        try:
+                            data['reposts'] = int(reposts_match.group(1).replace(',', ''))
+                        except:
+                            pass
+            
+            # Extract post link
+            link_elem = element.select_one("a[href*='/feed/update/'], a[href*='/posts/']")
+            if link_elem:
+                data['link'] = link_elem.get('href')
+                if data['link'] and not data['link'].startswith('http'):
+                    data['link'] = f"https://www.linkedin.com{data['link']}"
+            
+            # Debug output
+            if not data['author'] and data['content']:
+                # Try one more time to get author from the full element text
+                full_text = element.get_text(' ', strip=True)
+                # Look for pattern like "Name • Title"
+                author_match = re.search(r'^([A-Za-z\s]+)(?:•|\|)', full_text)
+                if author_match:
+                    data['author'] = author_match.group(1).strip()
+            
+            # Only return if we have meaningful content
+            if data['author'] or data['content']:
+                return data
+            
+            return None
+            
         except Exception as e:
-            print(f"Error extracting post data: {str(e)}")
+            print(f"Error extracting post: {str(e)}")
             return None
 
-    def _parse_relative_time_to_seconds(self, time_str: str) -> Union[int, None]:
-        """Parse LinkedIn relative time strings like '2d', '3h', '1 mo', '4 weeks' into seconds.
-
-        Returns integer seconds or None if it can't parse.
-        """
+    def _expand_see_more_buttons(self):
+        """Expand 'see more' buttons to get full content"""
         try:
-            s = time_str.strip().lower()
-            # remove bullets or separators
-            s = s.replace('\u2022', ' ').replace('·', ' ').strip()
-
-            import re
-            # patterns: '5h', '5 h', '5 hrs', '5 hours', '2d', '2 days', '1 mo', '1 month'
-            m = re.search(r"(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|week|weeks|mo|month|months|y|yr|year|years)", s)
-            if not m:
-                # maybe text like '2 weeks ago' or '3 months'
-                m = re.search(r"(\d+)\s*(week|weeks|month|months|year|years)", s)
-            if not m:
-                return None
-
-            num = int(m.group(1))
-            unit = m.group(2)
-            if unit.startswith('s') or unit in ('sec', 'secs', 'second', 'seconds'):
-                return num
-            if unit in ('m', 'min', 'mins', 'minute', 'minutes'):
-                return num * 60
-            if unit.startswith('h') or unit in ('hr', 'hrs', 'hour', 'hours'):
-                return num * 3600
-            if unit.startswith('d') or unit in ('day', 'days'):
-                return num * 86400
-            if unit.startswith('w') or unit in ('week', 'weeks'):
-                return num * 86400 * 7
-            if unit in ('mo', 'month', 'months'):
-                return num * 86400 * 30
-            if unit.startswith('y') or unit in ('yr', 'year', 'years'):
-                return num * 86400 * 365
-            return None
-        except Exception:
-            return None
-
-    def logout(self):
-        """Logout from LinkedIn"""
-        try:
-            # Click on the menu button (Me dropdown)
-            menu_button = WebDriverWait(self.browser, 5).until(
-                EC.presence_of_element_located((By.XPATH, "//button[@data-control-name='nav.settings']"))
-            )
-            self.browser.execute_script("arguments[0].click();", menu_button)
-            time.sleep(1)
+            see_more_selectors = [
+                "button[aria-label*='see more']",
+                "button.feed-shared-inline-show-more-text__see-more-less-toggle",
+                "button[class*='see-more']",
+                "button[aria-expanded='false']"
+            ]
             
-            # Click on Sign Out
-            sign_out = WebDriverWait(self.browser, 5).until(
-                EC.presence_of_element_located((By.XPATH, "//a[@href='/m/logout/']"))
-            )
-            self.browser.execute_script("arguments[0].click();", sign_out)
-            time.sleep(2)
-            
-            return True
-        except Exception as e:
-            print(f"Error during logout: {str(e)}")
-            return False
-
-    def logout(self):
-        """Logout from LinkedIn"""
-        try:
-            # Click on Me menu
-            menu_button = WebDriverWait(self.browser, 5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "button[data-control-name='nav.settings']"))
-            )
-            self.browser.execute_script("arguments[0].click();", menu_button)
-            time.sleep(1)
-            
-            # Click Sign Out
-            sign_out = WebDriverWait(self.browser, 5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "a[href='/m/logout/']"))
-            )
-            sign_out.click()
-            time.sleep(2)
-            
-            return True
-        except Exception as e:
-            print(f"Error during logout: {str(e)}")
-            return False
+            for selector in see_more_selectors:
+                buttons = self.browser.find_elements(By.CSS_SELECTOR, selector)
+                for button in buttons[:5]:  # Limit to avoid too many expansions
+                    try:
+                        if button.is_displayed():
+                            self.browser.execute_script("arguments[0].click();", button)
+                            time.sleep(0.3)
+                    except:
+                        continue
+        except:
+            pass
 
     def close(self):
         """Close the browser"""
         if self.browser:
             try:
-                self.browser.close()
                 self.browser.quit()
             except:
                 pass
@@ -683,24 +780,31 @@ class LinkedInScraper:
                 self.browser = None
 
 def main():
-    """
-    Example usage of the LinkedIn scraper with different search patterns
-    """
+    """Example usage with Streamlit integration"""
     scraper = LinkedInScraper()
     
     try:
-        # Example 1: Search for company-specific posts
-        print("\nSearching for Apple-related posts...")
-        results = scraper.search_content(['apple'], search_type='keywords')
-        for post in results[:2]:
-            print("\nPost:")
-            print(f"Author: {post['author'] or 'No author'}")
-            print(f"Headline: {post['author_headline'] or 'No headline'}")
-            print(f"Content: {post['content'] if post['content'] else 'No content'}")
-            if post['engagement']:
-                print(f"Engagement: {post['engagement']}")
-            if post['link']:
-                print(f"Links: {post['link']}")
+        # Example search
+        keyword = "artificial intelligence"  # This would come from Streamlit input
+        num_posts = 5  # This would come from Streamlit number input
+        
+        print(f"\nSearching for '{keyword}' posts...")
+        results = scraper.search_content(keyword, search_type='keywords', max_posts=num_posts, debug=True)
+        
+        print(f"\n{'='*60}")
+        print(f"Found {len(results)} unique posts")
+        print(f"{'='*60}\n")
+        
+        for i, post in enumerate(results, 1):
+            print(f"Post {i}:")
+            print(f"Author: {post.get('author', 'Unknown')}")
+            print(f"Headline: {post.get('author_headline', 'N/A')}")
+            print(f"Time: {post.get('posted_time', 'N/A')}")
+            print(f"Content: {post.get('content', 'No content')[:200]}...")
+            print(f"Engagement: {post.get('likes', 0)} likes, {post.get('comments', 0)} comments, {post.get('reposts', 0)} reposts")
+            if post.get('link'):
+                print(f"Link: {post.get('link')}")
+            print("-" * 60)
             
     finally:
         scraper.close()

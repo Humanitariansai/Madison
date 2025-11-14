@@ -12,6 +12,11 @@ webdriver-manager==4.0.1
 # Frontend
 streamlit==1.28.1
 
+# Performance and testing
+psutil==5.9.6
+pytest==7.4.3
+pytest-benchmark==4.0.0
+
 # Optional dependencies for future features
 # fastapi==0.104.1        # For API endpoints (Week 3)
 # uvicorn==0.24.0         # ASGI server (Week 3)

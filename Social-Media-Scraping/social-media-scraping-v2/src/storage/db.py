@@ -16,7 +16,7 @@ class DataStore:
     
     def init_db(self):
         """Create collections and indexes"""
-        # Posts collection
+        # Posts collection (for Reddit)
         if "posts" not in self.db.list_collection_names():
             self.db.create_collection("posts")
         
@@ -24,6 +24,15 @@ class DataStore:
         self.db.posts.create_index([("id", 1), ("platform", 1)], unique=True)
         self.db.posts.create_index("created_at")
         self.db.posts.create_index("platform")
+        
+        # LinkedIn posts collection
+        if "linkedin_posts" not in self.db.list_collection_names():
+            self.db.create_collection("linkedin_posts")
+        
+        # Create unique index on content hash to prevent duplicates
+        self.db.linkedin_posts.create_index("content_hash", unique=True)
+        self.db.linkedin_posts.create_index("scraped_at")
+        self.db.linkedin_posts.create_index("author")
         
         # Keywords collection
         if "scraped_keywords" not in self.db.list_collection_names():
@@ -85,10 +94,28 @@ class DataStore:
         ))
         return results
     
+    def insert_linkedin_post(self, post_data: dict) -> bool:
+        """Insert a LinkedIn post, skip if duplicate based on content hash"""
+        try:
+            self.db.linkedin_posts.insert_one(post_data)
+            return True
+        except DuplicateKeyError:
+            return False  # Duplicate based on content_hash
+    
+    def get_linkedin_stats(self) -> Dict:
+        """Get LinkedIn collection statistics"""
+        return {
+            "total_posts": self.db.linkedin_posts.count_documents({}),
+            "unique_authors": len(self.db.linkedin_posts.distinct("author"))
+        }
+    
     def get_stats(self) -> Dict:
         """Get collection statistics"""
+        linkedin_count = self.db.linkedin_posts.count_documents({})
+        
         return {
             "total_posts": self.db.posts.count_documents({}),
+            "linkedin_posts": linkedin_count,
             "platforms": list(self.db.posts.distinct("platform")),
             "by_platform": [
                 {"platform": p, "count": self.db.posts.count_documents({"platform": p})}

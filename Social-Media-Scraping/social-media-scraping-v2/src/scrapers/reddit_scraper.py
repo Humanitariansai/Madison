@@ -3,7 +3,7 @@ import os
 from typing import List, Dict
 from datetime import datetime
 from dotenv import load_dotenv
-from utils.rate_limiter import rate_limiter
+from src.utils.rate_limiter import rate_limiter
 
 class RedditScraper:
     def __init__(self):

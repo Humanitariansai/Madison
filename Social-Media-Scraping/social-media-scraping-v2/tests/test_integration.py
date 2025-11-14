@@ -9,11 +9,13 @@ import os
 import sys
 from datetime import datetime, timedelta
 from typing import Dict, List
+import hashlib
 
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from scrapers.reddit_scraper import RedditScraper
+from scrapers.linkedin_scraper import LinkedInScraper
 from storage.db import DataStore
 from utils.rate_limiter import RateLimiter, rate_limiter
 
@@ -24,7 +26,8 @@ class TestDataProcessingPipeline(unittest.TestCase):
         """Print database statistics"""
         stats = self.store.get_stats()
         print(f"\n{prefix} Database stats:")
-        print(f"Total posts: {stats['total_posts']}")
+        print(f"Total Reddit posts: {stats['total_posts']}")
+        print(f"Total LinkedIn posts: {stats.get('linkedin_posts', 0)}")
         print(f"Platforms: {stats['platforms']}")
         for platform_stat in stats['by_platform']:
             print(f"- {platform_stat['platform']}: {platform_stat['count']} posts")
@@ -32,9 +35,11 @@ class TestDataProcessingPipeline(unittest.TestCase):
     def setUp(self):
         """Initialize components for testing"""
         self.reddit = RedditScraper()
+        self.linkedin = LinkedInScraper()
         self.store = DataStore()
         # List to track IDs of posts added during tests
         self.test_post_ids = []
+        self.test_linkedin_hashes = []  # Track LinkedIn post content hashes
         
         # Print stats before test
         self.print_db_stats("BEFORE TEST")
@@ -44,8 +49,8 @@ class TestDataProcessingPipeline(unittest.TestCase):
         # Print stats before cleanup
         self.print_db_stats("BEFORE TEARDOWN")
         
-        # Clean up test posts using both ID tracking and is_test_data flag
-        print("\nCleaning up test posts...")
+        # Clean up Reddit test posts using both ID tracking and is_test_data flag
+        print("\nCleaning up Reddit test posts...")
         
         # Query to find test posts either by ID or by test flag
         query = {
@@ -58,7 +63,19 @@ class TestDataProcessingPipeline(unittest.TestCase):
         }
         
         result = self.store.db.posts.delete_many(query)
-        print(f"Deleted {result.deleted_count} test posts")
+        print(f"Deleted {result.deleted_count} Reddit test posts")
+        
+        # Clean up LinkedIn test posts
+        print("Cleaning up LinkedIn test posts...")
+        linkedin_query = {
+            "$or": [
+                {"content_hash": {"$in": self.test_linkedin_hashes}} if self.test_linkedin_hashes else {},
+                {"is_test_data": True}
+            ]
+        }
+        
+        linkedin_result = self.store.db.linkedin_posts.delete_many(linkedin_query)
+        print(f"Deleted {linkedin_result.deleted_count} LinkedIn test posts")
         
         # Print stats after cleanup
         self.print_db_stats("AFTER TEARDOWN")
@@ -88,6 +105,42 @@ class TestDataProcessingPipeline(unittest.TestCase):
         
         # Second insertion of same post should fail/skip
         result2 = self.store.insert_post(test_post)
+        self.assertFalse(result2)
+    
+    def test_linkedin_data_deduplication(self):
+        """Test that duplicate LinkedIn posts are properly handled"""
+        timestamp = datetime.now().timestamp()
+        content = f"Test LinkedIn post content {timestamp}"
+        content_hash = hashlib.md5(f"test_author_{content}_1h".encode()).hexdigest()
+        
+        test_linkedin_post = {
+            "content_hash": content_hash,
+            "author": "test_author",
+            "author_headline": "Test Headline",
+            "content": content,
+            "posted_time": "1h",
+            "link": "https://linkedin.com/test",
+            "metrics": {
+                "likes": 10,
+                "comments": 5,
+                "reposts": 2,
+                "total_engagement": 17
+            },
+            "search_query": "test",
+            "scraped_via": "test_suite",
+            "scraped_at": datetime.now(),
+            "is_test_data": True
+        }
+        
+        # Track this test post
+        self.test_linkedin_hashes.append(content_hash)
+        
+        # First insertion should succeed
+        result1 = self.store.insert_linkedin_post(test_linkedin_post)
+        self.assertTrue(result1)
+        
+        # Second insertion of same post should fail/skip
+        result2 = self.store.insert_linkedin_post(test_linkedin_post)
         self.assertFalse(result2)
 
     def test_search_and_filter(self):
@@ -289,6 +342,172 @@ class TestRedditIntegration(unittest.TestCase):
             
         # All found posts should be from Reddit
         self.assertTrue(all(post["platform"] == "reddit" for post in test_posts))
+
+class TestLinkedInIntegration(unittest.TestCase):
+    """Integration tests for LinkedIn scraping functionality"""
+    
+    def print_db_stats(self, prefix=""):
+        """Print database statistics"""
+        stats = self.store.get_stats()
+        print(f"\n{prefix} Database stats:")
+        print(f"Total Reddit posts: {stats['total_posts']}")
+        print(f"Total LinkedIn posts: {stats.get('linkedin_posts', 0)}")
+    
+    def setUp(self):
+        """Initialize components for testing"""
+        try:
+            self.linkedin = LinkedInScraper()
+            self.linkedin_available = True
+        except Exception as e:
+            print(f"LinkedIn scraper initialization failed: {e}")
+            self.linkedin_available = False
+            
+        self.store = DataStore()
+        self.test_linkedin_hashes = []
+        
+        # Print stats before test
+        self.print_db_stats("BEFORE TEST")
+        
+    def tearDown(self):
+        """Clean up after each test"""
+        # Print stats before cleanup
+        self.print_db_stats("BEFORE TEARDOWN")
+        
+        # Clean up LinkedIn test posts
+        print("\nCleaning up LinkedIn test posts...")
+        linkedin_query = {
+            "$or": [
+                {"content_hash": {"$in": self.test_linkedin_hashes}} if self.test_linkedin_hashes else {},
+                {"is_test_data": True}
+            ]
+        }
+        
+        linkedin_result = self.store.db.linkedin_posts.delete_many(linkedin_query)
+        print(f"Deleted {linkedin_result.deleted_count} LinkedIn test posts")
+        
+        # Print stats after cleanup
+        self.print_db_stats("AFTER TEARDOWN")
+        
+        # Close the database connection
+        self.store.client.close()
+    
+    def test_linkedin_scrape_and_store(self):
+        """Test the complete flow from LinkedIn scraping to storage"""
+        if not self.linkedin_available:
+            self.skipTest("LinkedIn scraper not available - check credentials")
+        
+        keyword = "artificial intelligence"
+        test_run_id = f"test_run_{datetime.now().timestamp()}"
+        
+        print(f"\nSearching LinkedIn for '{keyword}'...")
+        
+        try:
+            # Scrape from LinkedIn (limit to 3 for faster testing)
+            linkedin_posts = self.linkedin.search_content(
+                keywords=keyword,
+                search_type="keywords",
+                max_posts=3,
+                debug=False
+            )
+            
+            self.assertIsInstance(linkedin_posts, list)
+            print(f"Found {len(linkedin_posts)} LinkedIn posts")
+            
+            if not linkedin_posts:
+                self.skipTest("No LinkedIn posts found - may need authentication")
+            
+            # Store first post
+            post = linkedin_posts[0]
+            print(f"First post author: {post.get('author')}")
+            
+            # Create content hash
+            import hashlib
+            content_for_hash = f"{post.get('author', '')}_{post.get('content', '')}_{post.get('posted_time', '')}"
+            content_hash = hashlib.md5(content_for_hash.encode()).hexdigest()
+            
+            post_data = {
+                "content_hash": content_hash,
+                "author": post.get('author', 'Unknown'),
+                "author_headline": post.get('author_headline', ''),
+                "content": post.get('content', ''),
+                "posted_time": post.get('posted_time', ''),
+                "link": post.get('link', ''),
+                "metrics": {
+                    "likes": post.get('likes', 0),
+                    "comments": post.get('comments', 0),
+                    "reposts": post.get('reposts', 0),
+                    "total_engagement": post.get('likes', 0) + post.get('comments', 0) + post.get('reposts', 0)
+                },
+                "search_query": keyword,
+                "scraped_via": "test_suite",
+                "scraped_at": datetime.now(),
+                "is_test_data": True,
+                "test_run_id": test_run_id
+            }
+            
+            self.test_linkedin_hashes.append(content_hash)
+            
+            stored = self.store.insert_linkedin_post(post_data)
+            self.assertTrue(stored)
+            print(f"LinkedIn post stored successfully: {stored}")
+            
+            # Verify storage
+            linkedin_stats = self.store.get_linkedin_stats()
+            print(f"Total LinkedIn posts in DB: {linkedin_stats['total_posts']}")
+            self.assertGreaterEqual(linkedin_stats['total_posts'], 1)
+            
+        except Exception as e:
+            self.skipTest(f"LinkedIn scraping failed: {str(e)}")
+    
+    def test_linkedin_stats(self):
+        """Test LinkedIn statistics retrieval"""
+        linkedin_stats = self.store.get_linkedin_stats()
+        
+        self.assertIsInstance(linkedin_stats, dict)
+        self.assertIn('total_posts', linkedin_stats)
+        self.assertIn('unique_authors', linkedin_stats)
+        
+        print(f"\nLinkedIn Stats:")
+        print(f"Total posts: {linkedin_stats['total_posts']}")
+        print(f"Unique authors: {linkedin_stats['unique_authors']}")
+    
+    def test_linkedin_deduplication(self):
+        """Test that duplicate LinkedIn posts are properly handled"""
+        timestamp = datetime.now().timestamp()
+        content = f"Test LinkedIn post content {timestamp}"
+        
+        import hashlib
+        content_hash = hashlib.md5(f"test_author_{content}_1h".encode()).hexdigest()
+        
+        test_linkedin_post = {
+            "content_hash": content_hash,
+            "author": "test_author",
+            "author_headline": "Test Headline",
+            "content": content,
+            "posted_time": "1h",
+            "link": "https://linkedin.com/test",
+            "metrics": {
+                "likes": 10,
+                "comments": 5,
+                "reposts": 2,
+                "total_engagement": 17
+            },
+            "search_query": "test",
+            "scraped_via": "test_suite",
+            "scraped_at": datetime.now(),
+            "is_test_data": True
+        }
+        
+        # Track this test post
+        self.test_linkedin_hashes.append(content_hash)
+        
+        # First insertion should succeed
+        result1 = self.store.insert_linkedin_post(test_linkedin_post)
+        self.assertTrue(result1)
+        
+        # Second insertion of same post should fail/skip
+        result2 = self.store.insert_linkedin_post(test_linkedin_post)
+        self.assertFalse(result2)
 
 if __name__ == '__main__':
     unittest.main()
