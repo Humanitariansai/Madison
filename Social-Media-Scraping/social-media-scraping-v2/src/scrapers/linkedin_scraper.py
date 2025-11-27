@@ -125,42 +125,112 @@ class LinkedInScraper:
             "3. For Mac manual: Download, extract, and run: xattr -d com.apple.quarantine chromedriver"
         )
 
-    def login(self) -> bool:
-        """Login to LinkedIn"""
+    def login(self, verification_code: str = None) -> bool:
+        """Login to LinkedIn with optional 2FA verification code"""
         try:
+            print("Navigating to LinkedIn login page...")
             self.browser.get('https://www.linkedin.com/login')
             time.sleep(2)
+            print(f"Current URL: {self.browser.current_url}")
             
             # Find and fill username
+            print("Looking for username field...")
             username_elem = WebDriverWait(self.browser, 10).until(
                 EC.presence_of_element_located((By.ID, 'username'))
             )
             username_elem.clear()
             username_elem.send_keys(self.username)
+            print("Username entered")
             
             # Find and fill password
+            print("Looking for password field...")
             password_elem = self.browser.find_element(By.ID, 'password')
             password_elem.clear()
             password_elem.send_keys(self.password)
             password_elem.send_keys(Keys.RETURN)
+            print("Login form submitted")
             
             # Wait for login to complete
             time.sleep(5)
+            print(f"Post-login URL: {self.browser.current_url}")
             
-            # Check if login was successful
+            # Check for 2FA verification page
+            if "challenge" in self.browser.current_url or "checkpoint" in self.browser.current_url:
+                print("⚠️ LinkedIn verification required")
+                
+                if verification_code:
+                    print(f"Entering verification code: {verification_code}")
+                    try:
+                        # Try to find the verification code input field
+                        # LinkedIn uses different field IDs for verification
+                        code_field = None
+                        possible_ids = ['input__email_verification_pin', 'pin', 'verification-code', 'input__phone_verification_pin']
+                        
+                        for field_id in possible_ids:
+                            try:
+                                code_field = self.browser.find_element(By.ID, field_id)
+                                print(f"Found verification field: {field_id}")
+                                break
+                            except:
+                                continue
+                        
+                        # If no ID worked, try by name or type
+                        if not code_field:
+                            try:
+                                code_field = self.browser.find_element(By.NAME, 'pin')
+                            except:
+                                try:
+                                    code_field = self.browser.find_element(By.CSS_SELECTOR, 'input[type="tel"]')
+                                except:
+                                    pass
+                        
+                        if code_field:
+                            code_field.clear()
+                            code_field.send_keys(verification_code)
+                            code_field.send_keys(Keys.RETURN)
+                            print("Verification code submitted")
+                            
+                            # Wait for verification to complete
+                            time.sleep(5)
+                            print(f"Post-verification URL: {self.browser.current_url}")
+                            
+                            if "feed" in self.browser.current_url or "mynetwork" in self.browser.current_url:
+                                print("✅ Login successful after verification!")
+                                return True
+                            else:
+                                print("❌ Verification may have failed - check URL")
+                                return False
+                        else:
+                            print("❌ Could not find verification code input field")
+                            print(f"Page source contains: {self.browser.page_source[:500]}")
+                            return False
+                            
+                    except Exception as ve:
+                        print(f"❌ Verification error: {str(ve)}")
+                        return False
+                else:
+                    print("❌ Verification code required but not provided")
+                    print("Please provide the code from your email")
+                    return False
+            
+            # Check if login was successful without verification
             if "feed" in self.browser.current_url or "mynetwork" in self.browser.current_url:
-                print("Login successful!")
+                print("✅ Login successful!")
                 return True
-            return False
+            else:
+                print(f"❌ Login failed - unexpected URL: {self.browser.current_url}")
+                return False
             
         except Exception as e:
-            print(f"Login failed: {str(e)}")
+            print(f"❌ Login error: {str(e)}")
+            print(f"Current page title: {self.browser.title if self.browser else 'No browser'}")
             return False
 
     def search_content(self, keywords: Union[str, List[str]], search_type: str = 'hashtag', 
-                      max_posts: int = 10, debug: bool = False) -> List[Dict]:
+                      max_posts: int = 10, debug: bool = False, verification_code: str = None) -> List[Dict]:
         """
         Search LinkedIn content by keywords or hashtag
+        verification_code: Optional 2FA code if LinkedIn requires verification
         """
         print(f"\nInitializing search for: {keywords}")
         
@@ -168,8 +238,8 @@ class LinkedInScraper:
             print("Initializing browser...")
             self.initialize_browser()
             print("Logging in to LinkedIn...")
-            if not self.login():
-                raise Exception("Failed to login to LinkedIn")
+            if not self.login(verification_code=verification_code):
+                raise Exception("Failed to login to LinkedIn - check if verification code is needed")
             time.sleep(3)
 
         try:

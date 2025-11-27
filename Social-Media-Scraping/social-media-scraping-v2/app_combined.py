@@ -449,6 +449,15 @@ def main():
                     placeholder="e.g., machine learning\ndata science",
                     help="Enter one keyword per line for multiple keywords"
                 )
+            
+            # LinkedIn verification code input
+            st.subheader("🔐 Verification (if needed)")
+            verification_code = st.text_input(
+                "LinkedIn Verification Code",
+                placeholder="Enter code from email",
+                type="password",
+                help="If LinkedIn sends you a verification code via email, enter it here"
+            )
         else:
             # Reddit search
             search_query = st.text_input(
@@ -570,7 +579,8 @@ def main():
                         keywords=keywords,
                         search_type=search_type,
                         max_posts=num_posts,
-                        debug=debug_mode if 'debug_mode' in locals() else False
+                        debug=debug_mode if 'debug_mode' in locals() else False,
+                        verification_code=verification_code if verification_code else None
                     )
             
             else:
