@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: social-media-scraper-api
+    name: social-media-scraper
     env: docker
     plan: free
     dockerfilePath: ./Dockerfile
@@ -17,4 +17,3 @@ services:
         sync: false
       - key: LINKEDIN_PASSWORD
         sync: false
-    healthCheckPath: /
