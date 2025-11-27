@@ -39,6 +39,10 @@ class LinkedInScraper:
         chrome_options.add_argument('--headless=new')
         chrome_options.add_argument('--window-size=1920,1080')
         
+        # Check if running on Streamlit Cloud (uses chromium)
+        if os.path.exists('/usr/bin/chromium'):
+            chrome_options.binary_location = '/usr/bin/chromium'
+        
         try:
             # Try using Selenium 4's built-in driver manager (no external dependencies)
             self.browser = webdriver.Chrome(options=chrome_options)
