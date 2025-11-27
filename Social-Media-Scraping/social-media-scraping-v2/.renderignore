@@ -1,0 +1,31 @@
+# .renderignore
+# Files to exclude from Render deployment
+
+# Local development
+.env
+.env.local
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Documentation (keep RENDER_DEPLOY.md)
+*.md
+!README.md
+!RENDER_DEPLOY.md
+
+# Git
+.git/
+.gitignore
+
+# OS
+.DS_Store

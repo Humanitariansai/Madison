@@ -35,8 +35,9 @@ class LinkedInScraper:
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
-        # Uncomment for headless mode
-        # chrome_options.add_argument('--headless')
+        # Enable headless mode for cloud deployment
+        chrome_options.add_argument('--headless=new')
+        chrome_options.add_argument('--window-size=1920,1080')
         
         try:
             # Try using Selenium 4's built-in driver manager (no external dependencies)

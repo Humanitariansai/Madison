@@ -17,10 +17,7 @@ psutil==5.9.6
 pytest==7.4.3
 pytest-benchmark==4.0.0
 
-# Optional dependencies for future features
-# fastapi==0.104.1        # For API endpoints (Week 3)
-# uvicorn==0.24.0         # ASGI server (Week 3)
-# celery==5.3.4           # Async scraping (Week 2)
-# redis==5.0.1            # Rate limiting backend (Week 2)
-# selenium==4.15.2        # Browser automation (Week 2)
-# playwright==1.40.0      # Alternative browser automation (Week 2)
+# API dependencies
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0

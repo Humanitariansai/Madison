@@ -356,6 +356,42 @@ linkedin_stats = store.get_linkedin_stats()
 # }
 ```
 
+## 🚀 New Features
+
+### RESTful API
+- **Endpoints**:
+  - `/posts`: Retrieve posts (filter by platform optional).
+  - `/stats`: View post statistics.
+  - `/export`: Download posts as CSV.
+
+### Webhook System
+- **Endpoints**:
+  - `/webhook`: Receive webhook events.
+  - `/webhook/events`: List received events.
+  - `/webhook/notify`: Send webhook notifications.
+
+### Performance Optimization
+- Added async scraping for Reddit.
+- Benchmarks now include async performance metrics.
+
+### How to Run
+1. **Start API**:
+   ```bash
+   uvicorn api.main:app --reload
+   ```
+2. **Start Webhook System**:
+   ```bash
+   uvicorn api.webhooks:app --reload
+   ```
+3. **Run Benchmarks**:
+   ```bash
+   python src/tools/benchmark.py
+   ```
+
+### Next Steps
+- Add security headers and rate limiting.
+- Finalize soft launch with sample datasets.
+
 ## 🛡️ Ethical Guidelines
 
 This tool follows strict ethical guidelines:

@@ -15,6 +15,7 @@ from pathlib import Path
 import psutil
 import os
 from datetime import datetime
+import asyncio
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -174,6 +175,46 @@ class PerformanceBenchmark:
         self.results['db_insertion'] = result
         return result
     
+    async def async_benchmark_reddit_scraping(self, query="Python", limit=20):
+        """Benchmark Reddit scraping with async."""
+        print(f"\n🔍 Async Benchmarking Reddit scraping ({limit} posts)...")
+        print("=" * 60)
+
+        mem_before = self.get_memory_usage()
+        start_time = time.time()
+
+        try:
+            scraper = RedditScraper()
+            posts = await scraper.async_search_subreddits(query=query, limit=limit)
+
+            end_time = time.time()
+            mem_after = self.get_memory_usage()
+
+            duration = end_time - start_time
+            mem_delta = mem_after - mem_before
+            posts_per_sec = len(posts) / duration if duration > 0 else 0
+
+            result = {
+                "platform": "Reddit",
+                "posts_scraped": len(posts),
+                "duration_seconds": round(duration, 2),
+                "posts_per_second": round(posts_per_sec, 2),
+                "memory_delta_mb": round(mem_delta, 2),
+                "status": "success"
+            }
+
+            print(f"✅ Scraped {len(posts)} posts in {duration:.2f}s")
+            print(f"   Speed: {posts_per_sec:.2f} posts/sec")
+            print(f"   Memory: +{mem_delta:.2f} MB")
+
+            self.results['reddit_async'] = result
+            return result
+
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            self.results['reddit_async'] = {"status": "error", "error": str(e)}
+            return None
+    
     def print_summary(self):
         """Print comprehensive benchmark summary"""
         print("\n" + "=" * 60)
@@ -204,9 +245,17 @@ class PerformanceBenchmark:
             print(f"  Speed: {d['inserts_per_second']} inserts/sec")
             print(f"  Memory: +{d['memory_delta_mb']} MB")
         
+        if 'reddit_async' in self.results and self.results['reddit_async'].get('status') == 'success':
+            r_async = self.results['reddit_async']
+            print(f"\n🔴 Async Reddit:")
+            print(f"  Posts: {r_async['posts_scraped']}")
+            print(f"  Time: {r_async['duration_seconds']}s")
+            print(f"  Speed: {r_async['posts_per_second']} posts/sec")
+            print(f"  Memory: +{r_async['memory_delta_mb']} MB")
+        
         print("\n" + "=" * 60)
 
-def main():
+async def main():
     print("🚀 Performance Benchmarking Tool")
     print("Testing scraping and database performance...\n")
     
@@ -227,10 +276,13 @@ def main():
     # Database benchmark
     benchmark.benchmark_db_insertion(num_posts=50)
     
+    # Async Reddit benchmark
+    await benchmark.async_benchmark_reddit_scraping(limit=10)
+    
     # Summary
     benchmark.print_summary()
     
     print("\n✨ Benchmarking complete!")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
