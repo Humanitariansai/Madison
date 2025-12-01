@@ -80,12 +80,14 @@ if 'search_history' not in st.session_state:
 
 @st.cache_resource
 def initialize_components():
-    """Initialize scrapers and database with error handling"""
+    """Initialize scrapers and database with error handling.
+    Note: Do NOT cache LinkedInScraper to avoid keeping a Chrome session in memory.
+    """
     try:
         reddit_scraper = RedditScraper()
-        linkedin_scraper = LinkedInScraper()
         db_store = DataStore()
-        return reddit_scraper, linkedin_scraper, db_store, None
+        # Do not create LinkedInScraper here; instantiate per search
+        return reddit_scraper, None, db_store, None
     except Exception as e:
         return None, None, None, str(e)
 
@@ -575,6 +577,9 @@ def main():
                           [k.strip() for k in search_query.split("\n") if k.strip()]
                 
                 with st.spinner(f"Scraping {num_posts} posts..."):
+                    # Create a fresh LinkedInScraper per search to avoid long-lived Chrome in memory
+                    if linkedin_scraper is None:
+                        linkedin_scraper = LinkedInScraper()
                     results = linkedin_scraper.search_content(
                         keywords=keywords,
                         search_type=search_type,
@@ -662,6 +667,11 @@ def main():
         
         if platform_name == "LinkedIn":
             render_linkedin_results(results, db_store, search_query_val)
+            # Free memory after rendering: do not keep large results in session
+            try:
+                st.session_state.results = None
+            except Exception:
+                pass
         
         else:
             # Reddit results
