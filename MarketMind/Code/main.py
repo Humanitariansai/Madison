@@ -1,87 +1,92 @@
+%%writefile main.py
 import os
-import sys
-from crewai import Crew, Process
+from crewai import Crew
 from agents import MarketResearchAgents
 from tasks import MarketResearchTasks
-from dotenv import load_dotenv
-print("DEBUG — running with:", sys.executable)
-print("DEBUG — PYTHONPATH  :", os.environ.get("PYTHONPATH"))
+from tools.feature_comparison import FeatureComparisonTool
 
-# Load environment variables from .env file
-load_dotenv()
 
 def run():
-    """Run the market research crew."""
-    # Get inputs from environment variables
-    product_name = os.getenv("PRODUCT_NAME")
-    product_description = os.getenv("PRODUCT_DESCRIPTION")
-    industry = os.getenv("INDUSTRY")
-    geography = os.getenv("GEOGRAPHY")
-    scale = os.getenv("SCALE")
-    competitor_focus = os.getenv("COMPETITOR_FOCUS", "")
-    additional_context = os.getenv("ADDITIONAL_CONTEXT", "")
-    refocus_mode = os.getenv("REFOCUS_MODE", "false")
+    # 1️⃣ Configuration
+    product_name = os.getenv("PRODUCT_NAME", "EcoWave Smart Bottle")
+    industry = os.getenv("INDUSTRY", "Consumer Goods")
 
-    if not all([product_name, product_description, industry, geography, scale]):
-        print("Error: One or more required environment variables are not set.")
-        return
+    print(f"\n🚀 Running MarketMind Full Analysis for {product_name} ({industry})\n")
 
-    inputs = {
-        'product_name': product_name,
-        'product_description': product_description,
-        'industry': industry,
-        'geography': geography,
-        'scale': scale,
-        'competitor_focus': competitor_focus,
-        'additional_context': additional_context,
-        'refocus_mode': refocus_mode,
-    }
-
-    # Initialize agents and tasks
+    # 2️⃣ Initialize agents and tasks manager
     agents = MarketResearchAgents()
     tasks = MarketResearchTasks()
 
-    # Create agent instances
+    # --- Initialize AI agents ---
     consultant = agents.strategy_consultant()
-    competitor_analyst = agents.competitor_analyst()
+    competitor_analyst = agents.review_analyst()
     customer_analyst = agents.customer_persona_analyst()
-    devils_advocate = agents.devils_advocate()
-    synthesizer = agents.lead_strategy_synthesizer()
+    sentiment_analyst = agents.review_analyst()
+    summarizer = agents.lead_strategy_synthesizer()
 
-    # Create task instances
-    planning_task = tasks.research_planning_task(consultant)
-    competitor_task = tasks.competitor_analysis_task(competitor_analyst)
-    customer_task = tasks.customer_analysis_task(customer_analyst)
-    critique_task = tasks.risk_critique_task(devils_advocate, [planning_task, competitor_task, customer_task])
-    synthesis_task = tasks.synthesis_task(synthesizer, [planning_task, competitor_task, customer_task, critique_task])
+    # --- Define core analysis tasks ---
+    planning_task = tasks.research_planning_task(consultant, product_name, industry)
+    competitor_task = tasks.competitor_analysis_task(competitor_analyst, product_name, industry)
+    customer_task = tasks.customer_persona_task(customer_analyst, product_name, industry)
+    review_task = tasks.review_analysis_task(sentiment_analyst, product_name)
+    summary_task = tasks.executive_summary_task(summarizer, product_name, industry)
 
+    # --- Run feature comparison (external analysis)
+    print("🔍 Running feature comparison tool...")
+    feature_tool = FeatureComparisonTool()
+    feature_output = feature_tool._run(product_name, industry)
+    print("✅ Feature comparison complete.\n")
 
-    # Assemble the crew
+    # --- Combine all prior insights into a synthesis task
+    synthesis_task = tasks.synthesis_task(
+        summarizer,
+        product_name,
+        industry,
+        [planning_task, competitor_task, customer_task, review_task, summary_task]
+    )
+
+    # --- Create Crew and execute tasks collaboratively ---
+    print("🤖 Launching multi-agent collaboration...\n")
     crew = Crew(
-        agents=[
-            consultant,
-            competitor_analyst,
-            customer_analyst,
-            devils_advocate,
-            synthesizer
-        ],
+        agents=[consultant, competitor_analyst, customer_analyst, sentiment_analyst, summarizer],
         tasks=[
             planning_task,
             competitor_task,
             customer_task,
-            critique_task,
-            synthesis_task
+            review_task,
+            summary_task,
+            synthesis_task,
         ],
-        process=Process.sequential,
-        verbose=True # Set to False to hide backend logs as requested
+        verbose=True,
     )
 
-    # Kick off the crew's work
-    print(f"🚀 Starting Comprehensive Market Research for {product_name}...")
-    result = crew.kickoff(inputs=inputs)
-    print("\n\n✅ Crew execution finished.")
-    print("📝 Final Report Generated: final_market_analysis_report.md")
-    # print(result) # The result is now a large markdown file, better to just confirm it was created.
+    results = crew.kickoff()
+    print("\n✅ Crew Execution Completed Successfully!\n")
+
+    # --- Save results ---
+    os.makedirs("outputs", exist_ok=True)
+    output_files = {
+        "research_plan.md": getattr(planning_task, "output", ""),
+        "competitor_analysis.md": getattr(competitor_task, "output", ""),
+        "customer_analysis.md": getattr(customer_task, "output", ""),
+        "review_sentiment.md": getattr(review_task, "output", ""),
+        "executive_summary.md": getattr(summary_task, "output", ""),
+        "feature_comparison.md": feature_output or "",
+        "final_market_strategy_report.md": getattr(synthesis_task, "output", ""),
+    }
+
+    for filename, content in output_files.items():
+        file_path = os.path.join("outputs", filename)
+        if content:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(str(content))
+        else:
+            print(f"⚠️ No content generated for {filename}")
+
+    print("\n🎯 All tasks completed successfully. Reports saved to /outputs directory.\n")
+    os.system("ls -lh outputs || echo '⚠️ No output files found.'")
+    os.system("head -n 40 outputs/final_market_strategy_report.md || echo '⚠️ No final report generated.'")
+
 
 if __name__ == "__main__":
     run()
