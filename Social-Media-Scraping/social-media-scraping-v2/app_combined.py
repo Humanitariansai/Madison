@@ -617,7 +617,24 @@ def main():
             st.success(f"✅ Successfully scraped {len(results)} posts!")
             
         except Exception as e:
-            st.error(f"❌ Error occurred: {str(e)}")
+            error_message = str(e)
+            st.error(f"❌ Error occurred: {error_message}")
+            
+            # Special handling for LinkedIn verification errors
+            if "verification code" in error_message.lower() or "failed to login" in error_message.lower():
+                st.warning("""
+                ### 🔐 LinkedIn Verification Required
+                
+                LinkedIn has detected login from a new location and sent a verification code to your email.
+                
+                **Steps to continue:**
+                1. Check your email for a message from LinkedIn with a verification code
+                2. Enter the code in the **"LinkedIn Verification Code"** field in the left sidebar
+                3. Click **"🚀 Search LinkedIn"** again
+                
+                ℹ️ The browser session is kept alive, so you can retry immediately after entering the code.
+                """)
+            
             status_placeholder.empty()
             progress_placeholder.empty()
     
