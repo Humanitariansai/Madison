@@ -20,11 +20,19 @@ from dotenv import load_dotenv
 from shutil import which
 
 class LinkedInScraper:
-    def __init__(self):
+    def __init__(self, headless: bool = None):
         load_dotenv()
         self.username = os.getenv('LINKEDIN_USERNAME')
         self.password = os.getenv('LINKEDIN_PASSWORD')
         self.browser = None
+        # Auto-detect: headless in cloud (chromium path), visible locally unless overridden
+        if headless is None:
+            self.headless = os.getenv('LINKEDIN_HEADLESS', 'false').lower() == 'true' or \
+                           os.path.exists('/usr/bin/chromium')
+        else:
+            self.headless = headless
+        # Disable images in cloud by default to save memory/bandwidth
+        self.disable_images = os.getenv('LINKEDIN_DISABLE_IMAGES', 'true').lower() == 'true'
         
     def initialize_browser(self):
         """Initialize and return a Chrome browser instance"""
@@ -35,9 +43,29 @@ class LinkedInScraper:
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
-        # Enable headless mode for cloud deployment
-        chrome_options.add_argument('--headless=new')
-        chrome_options.add_argument('--window-size=1920,1080')
+        # Reduce memory and background activity
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-background-networking')
+        chrome_options.add_argument('--disable-default-apps')
+        chrome_options.add_argument('--disable-sync')
+        chrome_options.add_argument('--metrics-recording-only')
+        chrome_options.add_argument('--no-first-run')
+        chrome_options.add_argument('--safebrowsing-disable-auto-update')
+        chrome_options.add_argument('--disable-notifications')
+        chrome_options.add_argument('--mute-audio')
+        chrome_options.add_argument('--lang=en-US')
+        chrome_options.add_argument('--media-cache-size=0')
+        chrome_options.add_argument('--disk-cache-size=0')
+        if self.disable_images:
+            chrome_options.add_argument('--blink-settings=imagesEnabled=false')
+        # Headless mode configurable
+        if self.headless:
+            chrome_options.add_argument('--headless=new')
+            print("🔇 Running in HEADLESS mode (browser invisible)")
+        else:
+            print("👁️  Running in VISIBLE mode (you'll see the browser)")
+        # Slightly smaller window to reduce memory
+        chrome_options.add_argument('--window-size=1280,800')
         
         # Check if running on Streamlit Cloud (uses chromium)
         if os.path.exists('/usr/bin/chromium'):

@@ -616,6 +616,15 @@ def main():
             # Success message
             st.success(f"✅ Successfully scraped {len(results)} posts!")
             
+            # Free memory on Render: close LinkedIn browser unless explicitly kept
+            try:
+                if platform == "LinkedIn":
+                    keep_browser = os.getenv('LINKEDIN_KEEP_BROWSER', 'false').lower() == 'true'
+                    if not keep_browser and linkedin_scraper and getattr(linkedin_scraper, 'close', None):
+                        linkedin_scraper.close()
+            except Exception:
+                pass
+            
         except Exception as e:
             error_message = str(e)
             st.error(f"❌ Error occurred: {error_message}")
@@ -634,6 +643,13 @@ def main():
                 
                 ℹ️ The browser session is kept alive, so you can retry immediately after entering the code.
                 """)
+            else:
+                # No verification expected; close browser to free memory
+                try:
+                    if platform == "LinkedIn" and linkedin_scraper and getattr(linkedin_scraper, 'close', None):
+                        linkedin_scraper.close()
+                except Exception:
+                    pass
             
             status_placeholder.empty()
             progress_placeholder.empty()

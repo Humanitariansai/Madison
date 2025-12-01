@@ -12,6 +12,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 ENV PYTHONUNBUFFERED=1
+ENV STREAMLIT_BROWSER_GATHERUSAGESTATS=false
+ENV STREAMLIT_SERVER_FILEWATCHER_TYPE=none
 EXPOSE 8501
 
-CMD ["streamlit", "run", "app_combined.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+CMD ["streamlit", "run", "app_combined.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true", "--server.fileWatcherType=none"]
