@@ -37,7 +37,26 @@ class LinkedInScraper:
         chrome_options.add_experimental_option('useAutomationExtension', False)
         # Enable headless mode for cloud/local by default (previous behavior)
         chrome_options.add_argument('--headless=new')
-        chrome_options.add_argument('--window-size=1920,1080')
+        
+        # Optional low-memory mode via env
+        if os.getenv('LINKEDIN_LOW_MEM', 'false').lower() == 'true':
+            chrome_options.add_argument('--window-size=1280,800')
+            chrome_options.add_argument('--disable-extensions')
+            chrome_options.add_argument('--disable-background-networking')
+            chrome_options.add_argument('--disable-default-apps')
+            chrome_options.add_argument('--disable-sync')
+            chrome_options.add_argument('--metrics-recording-only')
+            chrome_options.add_argument('--no-first-run')
+            chrome_options.add_argument('--safebrowsing-disable-auto-update')
+            chrome_options.add_argument('--disable-notifications')
+            chrome_options.add_argument('--mute-audio')
+            chrome_options.add_argument('--lang=en-US')
+            chrome_options.add_argument('--media-cache-size=0')
+            chrome_options.add_argument('--disk-cache-size=0')
+            # Block images to save memory/bandwidth
+            chrome_options.add_argument('--blink-settings=imagesEnabled=false')
+        else:
+            chrome_options.add_argument('--window-size=1920,1080')
         
         # Check if running on Streamlit Cloud (uses chromium)
         if os.path.exists('/usr/bin/chromium'):

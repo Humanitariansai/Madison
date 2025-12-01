@@ -389,9 +389,12 @@ def main():
     reddit_scraper, linkedin_scraper, db_store, error = initialize_components()
     
     # Platform selection
+    available_platforms = ["Reddit", "LinkedIn"]
+    if os.getenv("DISABLE_LINKEDIN", "false").lower() == "true":
+        available_platforms = ["Reddit"]
     platform = st.sidebar.selectbox(
         "Select Platform",
-        ["Reddit", "LinkedIn"],
+        available_platforms,
         index=0,
         help="Choose which social media platform to scrape"
     )
