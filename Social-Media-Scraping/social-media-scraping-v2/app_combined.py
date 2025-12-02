@@ -580,16 +580,36 @@ def main():
                           [k.strip() for k in search_query.split("\n") if k.strip()]
                 
                 with st.spinner(f"Scraping {num_posts} posts..."):
-                    # Create a fresh LinkedInScraper per search to avoid long-lived Chrome in memory
-                    if linkedin_scraper is None:
-                        linkedin_scraper = LinkedInScraper()
-                    results = linkedin_scraper.search_content(
-                        keywords=keywords,
-                        search_type=search_type,
-                        max_posts=num_posts,
-                        debug=debug_mode if 'debug_mode' in locals() else False,
-                        verification_code=verification_code if verification_code else None
-                    )
+                    runner_url = os.getenv("LINKEDIN_RUNNER_URL")
+                    runner_token = os.getenv("LINKEDIN_RUNNER_TOKEN")
+                    if runner_url:
+                        import requests
+                        payload = {
+                            "keywords": keywords if search_type != "hashtag" else [keywords],
+                            "search_type": search_type,
+                            "max_posts": num_posts,
+                            "verification_code": verification_code if verification_code else None,
+                            "debug": bool(debug_mode) if 'debug_mode' in locals() else False
+                        }
+                        headers = {"X-Auth-Token": runner_token} if runner_token else {}
+                        try:
+                            resp = requests.post(f"{runner_url}/scrape", json=payload, headers=headers, timeout=120)
+                            resp.raise_for_status()
+                            data = resp.json()
+                            results = data.get("results", [])
+                        except Exception as e:
+                            raise Exception(f"LinkedIn local runner error: {str(e)}")
+                    else:
+                        # Fallback: run within this process (local dev)
+                        if linkedin_scraper is None:
+                            linkedin_scraper = LinkedInScraper()
+                        results = linkedin_scraper.search_content(
+                            keywords=keywords,
+                            search_type=search_type,
+                            max_posts=num_posts,
+                            debug=debug_mode if 'debug_mode' in locals() else False,
+                            verification_code=verification_code if verification_code else None
+                        )
             
             else:
                 # Reddit search
