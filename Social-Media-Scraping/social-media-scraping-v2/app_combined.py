@@ -531,6 +531,29 @@ def main():
         
         st.markdown("---")
         
+        # Local Runner status (only for LinkedIn)
+        if platform == "LinkedIn":
+            runner_url = os.getenv("LINKEDIN_RUNNER_URL")
+            runner_token = os.getenv("LINKEDIN_RUNNER_TOKEN")
+            status_col1, status_col2 = st.columns([3, 1])
+            with status_col1:
+                st.subheader("🏃 Local Runner Status")
+                if runner_url:
+                    try:
+                        import requests
+                        headers = {"X-Auth-Token": runner_token} if runner_token else {}
+                        r = requests.get(f"{runner_url}/health", headers=headers, timeout=8)
+                        if r.status_code == 200:
+                            st.success(f"Using Local Runner: {runner_url}")
+                        else:
+                            st.warning(f"Runner unreachable (HTTP {r.status_code}). Searches may run on server.")
+                    except Exception as e:
+                        st.warning(f"Runner check failed: {str(e)}. Searches may run on server.")
+                else:
+                    st.info("Local Runner not configured. Set LINKEDIN_RUNNER_URL to use your PC.")
+            with status_col2:
+                st.caption("If the tunnel URL changes, update LINKEDIN_RUNNER_URL on Render and redeploy.")
+        
         # Search history
         if st.session_state.search_history:
             st.header("📜 Search History")
@@ -584,6 +607,15 @@ def main():
                     runner_token = os.getenv("LINKEDIN_RUNNER_TOKEN")
                     if runner_url:
                         import requests
+                        # Health check before scrape to avoid fallback surprises
+                        try:
+                            headers_health = {"X-Auth-Token": runner_token} if runner_token else {}
+                            hc = requests.get(f"{runner_url}/health", headers=headers_health, timeout=8)
+                            if hc.status_code != 200:
+                                raise Exception(f"Runner health failed (HTTP {hc.status_code})")
+                        except Exception as e:
+                            raise Exception(f"Local Runner not reachable: {str(e)}. Update LINKEDIN_RUNNER_URL and redeploy.")
+                        
                         payload = {
                             "keywords": keywords if search_type != "hashtag" else [keywords],
                             "search_type": search_type,
