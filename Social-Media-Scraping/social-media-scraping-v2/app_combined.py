@@ -28,8 +28,8 @@ except ImportError:
 
 # Page configuration
 st.set_page_config(
-    page_title="Social Media Brand Scraper",
-    page_icon="🔍",
+    page_title="MarketMind",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -37,36 +37,49 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 3rem;
-        color: #FF4B4B;
-        text-align: center;
-        margin-bottom: 2rem;
+    /* Hide Streamlit chrome */
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    .block-container {padding-top: 0rem;}
+
+    /* Brand */
+    :root {
+        --brand: #7aa2f7; /* primary accent */
+        --brand-dark: #5c84d1;
+        --text: #e5e7eb; /* light text */
+        --muted: #9ca3af; /* muted gray */
+        --border: #1f2937; /* dark border */
+        --bg: #0f1419; /* deep dark */
+        --panel: #111827; /* panel background */
     }
-    .stButton > button {
-        width: 100%;
-        background-color: #FF4B4B;
-        color: white;
-        border: none;
-        padding: 0.5rem;
-        border-radius: 0.5rem;
-    }
-    .success-box {
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        color: #155724;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 1rem 0;
-    }
-    .warning-box {
-        background-color: #fff3cd;
-        border: 1px solid #ffeaa7;
-        color: #856404;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 1rem 0;
-    }
+
+    /* Navbar */
+    .mm-navbar {position: sticky; top: 0; z-index: 100; background: var(--panel); border-bottom: 1px solid var(--border);}    
+    .mm-nav-inner {display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem;}    
+    .mm-brand {font-weight: 700; color: var(--text); letter-spacing: 0.2px;}
+    /* Nav pills */
+    .mm-nav-pills {display: flex; gap: 0.5rem;}
+    .mm-pill {padding: 0.4rem 0.8rem; border-radius: 999px; background: transparent; color: var(--muted); border: 1px solid var(--border); cursor: pointer;}
+    .mm-pill-active {background: var(--brand); color: #0f1419; border-color: var(--brand);}
+
+    /* Buttons */
+    .stButton > button {width: 100%; background-color: var(--brand); color: #0f1419; border: none; padding: 0.6rem 0.8rem; border-radius: 0.5rem;}
+    .stButton > button:hover {background-color: var(--brand-dark);}    
+
+    /* Headings */
+    .main-header {font-size: 2rem; color: var(--text); margin: 0 0 0.75rem 0;}
+    .section-title {font-weight: 600; margin-top: 0.5rem;}
+    .small-muted {color: var(--muted); font-size: 0.9rem;}
+
+    /* Cards */
+    .mm-card {border: 1px solid var(--border); border-radius: 10px; padding: 1rem; background: var(--panel);}    
+
+    /* Tables */
+    div[data-testid="stDataFrame"] {border: 1px solid var(--border); border-radius: 10px; background: var(--panel);}    
+    
+    /* Hide default Streamlit tabs */
+    button[data-baseweb="tab"] {display: none;}
+    div[data-baseweb="tab-list"] {display: none;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -77,6 +90,8 @@ if 'results' not in st.session_state:
     st.session_state.results = None
 if 'search_history' not in st.session_state:
     st.session_state.search_history = []
+if 'active_tab' not in st.session_state:
+    st.session_state.active_tab = 0  # 0 = Search, 1 = Results
 
 @st.cache_resource
 def initialize_components():
@@ -102,11 +117,11 @@ def format_engagement_linkedin(post):
     """Format LinkedIn engagement metrics for display"""
     parts = []
     if post.get('likes', 0) > 0:
-        parts.append(f"👍 {post['likes']:,}")
+        parts.append(f"Likes {post['likes']:,}")
     if post.get('comments', 0) > 0:
-        parts.append(f"💬 {post['comments']:,}")
+        parts.append(f"Comments {post['comments']:,}")
     if post.get('reposts', 0) > 0:
-        parts.append(f"🔄 {post['reposts']:,}")
+        parts.append(f"Reposts {post['reposts']:,}")
     return " | ".join(parts) if parts else "No engagement data"
 
 def format_post_preview_reddit(posts):
@@ -150,29 +165,26 @@ def export_to_csv(results, platform):
 
 def render_linkedin_results(posts, db_store=None, search_query=""):
     """Render LinkedIn results with cards and analytics"""
+    # Persist results defensively
+    if posts:
+        st.session_state.linkedin_results = posts
+    else:
+        # Fallback to session
+        posts = st.session_state.get('linkedin_results', [])
     if not posts:
         return
     
     st.divider()
     
-    # Results header with export button
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.header(f"📊 Results ({len(posts)} posts)")
-    with col2:
-        csv_data = export_to_csv(posts, 'linkedin')
-        st.download_button(
-            label="📥 Export CSV",
-            data=csv_data,
-            file_name=f"linkedin_posts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+    # Results header
+    st.header(f"Results ({len(posts)} posts)")
     
     # Display options
     display_mode = st.radio(
         "Display Mode",
         options=["Cards", "Table", "Raw Data"],
-        horizontal=True
+        horizontal=True,
+        key="linkedin_display_mode"
     )
     
     if display_mode == "Cards":
@@ -213,7 +225,7 @@ def render_linkedin_results(posts, db_store=None, search_query=""):
                         time_str = post['posted_time']
                         if '•' in time_str:
                             time_str = time_str.split('•')[0].strip()
-                        st.caption(f"⏰ {time_str}")
+                        st.caption(f"{time_str}")
                 
                 with col2:
                     st.metric("Engagement", "", format_engagement_linkedin(post))
@@ -230,7 +242,7 @@ def render_linkedin_results(posts, db_store=None, search_query=""):
                             st.text_area("Post Content", content, height=200, disabled=True, label_visibility="collapsed", key=f"linkedin_content_{i}")
                 
                 if post.get('link'):
-                    st.markdown(f"[🔗 View on LinkedIn]({post['link']})")
+                    st.markdown(f"[View on LinkedIn]({post['link']})")
                 
                 st.divider()
     
@@ -250,7 +262,7 @@ def render_linkedin_results(posts, db_store=None, search_query=""):
     
     # Analytics section
     st.divider()
-    st.header("📈 Analytics")
+    st.header("Analytics")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -272,7 +284,7 @@ def render_linkedin_results(posts, db_store=None, search_query=""):
     
     # Top posts by engagement
     if any(post.get('likes', 0) > 0 for post in posts):
-        st.subheader("🏆 Top Posts by Engagement")
+        st.subheader("Top Posts by Engagement")
         sorted_posts = sorted(
             posts,
             key=lambda x: x.get('likes', 0) + x.get('comments', 0) + x.get('reposts', 0),
@@ -286,7 +298,7 @@ def render_linkedin_results(posts, db_store=None, search_query=""):
     # Save to database section (LinkedIn)
     if db_store:
         st.divider()
-        st.subheader("💾 Save to Database")
+        st.subheader("Save to Database")
         
         col1, col2 = st.columns([3, 1])
         
@@ -294,24 +306,24 @@ def render_linkedin_results(posts, db_store=None, search_query=""):
             st.markdown(f"""
             **Ready to save {len(posts)} LinkedIn posts to MongoDB?**
             
-            - ✅ Store in dedicated `linkedin_posts` collection
-            - ✅ Automatically skip duplicates
-            - ✅ Index for fast searching later
+            - Store in dedicated `linkedin_posts` collection
+            - Automatically skip duplicates
+            - Indexed for fast searching later
             """)
         
         with col2:
-            if st.button("💾 Save to DB", type="primary", key="linkedin_save_db"):
+            if st.button("Save to DB", type="primary", key="linkedin_save_db"):
                 try:
                     stored_count, duplicate_count = save_linkedin_to_db(posts, db_store, search_query)
                     
                     linkedin_stats = db_store.get_linkedin_stats()
                     
                     st.success(f"""
-                    🎉 **Save Complete!**
+                    Save complete.
                     
-                    - ✅ **{stored_count}** new posts saved
-                    - ⚠️ **{duplicate_count}** duplicates skipped
-                    - 📊 Total LinkedIn posts: **{linkedin_stats['total_posts']}**
+                    - {stored_count} new posts saved
+                    - {duplicate_count} duplicates skipped
+                    - Total LinkedIn posts: {linkedin_stats['total_posts']}
                     """)
                     
                     # Clear results to prevent re-saving
@@ -319,7 +331,7 @@ def render_linkedin_results(posts, db_store=None, search_query=""):
                         del st.session_state.results
                     
                 except Exception as e:
-                    st.error(f"❌ **Save Error**: {str(e)}")
+                    st.error(f"Save error: {str(e)}")
 
 def save_linkedin_to_db(posts, db_store, search_query):
     """Save LinkedIn posts to database"""
@@ -329,7 +341,7 @@ def save_linkedin_to_db(posts, db_store, search_query):
     save_status = st.empty()
     
     try:
-        save_status.text("💾 Saving LinkedIn posts to database...")
+        save_status.text("Saving LinkedIn posts to database...")
         
         stored_count = 0
         duplicate_count = 0
@@ -382,356 +394,346 @@ def save_linkedin_to_db(posts, db_store, search_query):
 
 def main():
     # Header
-    st.markdown('<h1 class="main-header">🔍 Social Media Brand Scraper</h1>', unsafe_allow_html=True)
-    st.markdown("**Search for brand mentions across Reddit and LinkedIn**")
+    # Navbar with brand + right-aligned nav pills
+    col_nav_left, col_nav_right = st.columns([3, 2])
+    with col_nav_left:
+        st.markdown('<div class="mm-brand" style="padding: 0.4rem 0;">MarketMind</div>', unsafe_allow_html=True)
+    with col_nav_right:
+        # Use a radio as nav selector, styled as pills
+        current_index = st.session_state.active_tab if 'active_tab' in st.session_state else 0
+        nav_choice = st.radio(
+            label="Navigation",
+            options=["Search", "Results"],
+            index=current_index,
+            horizontal=True,
+            key="mm_nav_choice",
+            label_visibility="collapsed"
+        )
+        # Sync session state
+        st.session_state.active_tab = 0 if nav_choice == "Search" else 1
+        # (Removed duplicate visual pills to avoid extra buttons)
+    st.markdown("<div style='border-bottom:1px solid var(--border); margin-top:0.5rem;'></div>", unsafe_allow_html=True)
     
     # Initialize components
     reddit_scraper, linkedin_scraper, db_store, error = initialize_components()
     
-    # Platform selection
-    available_platforms = ["Reddit", "LinkedIn"]
-    if os.getenv("DISABLE_LINKEDIN", "false").lower() == "true":
-        available_platforms = ["Reddit"]
-    platform = st.sidebar.selectbox(
-        "Select Platform",
-        available_platforms,
-        index=0,
-        help="Choose which social media platform to scrape"
-    )
-    
-    # Sidebar configuration
-    with st.sidebar:
-        st.header("⚙️ Search Settings")
-        
-        # Platform-specific credential checks
-        if platform == "LinkedIn":
-            if not check_linkedin_credentials():
-                st.error("❌ LinkedIn credentials not found!")
-                st.info("Please set LINKEDIN_USERNAME and LINKEDIN_PASSWORD in your .env file")
-                
-                with st.expander("Setup Instructions"):
-                    st.markdown("""
-                    1. Create a `.env` file in your project directory
-                    2. Add the following lines:
-                       ```
-                       LINKEDIN_USERNAME=your_email@example.com
-                       LINKEDIN_PASSWORD=your_password
-                       ```
-                    3. Restart the application
-                    """)
-                return
+    # Render content based on active_tab instead of using st.tabs
+    if st.session_state.active_tab == 0:
+        # Search tab content
+        with st.sidebar:
+            st.subheader("Search Settings")
+            
+            # Platform selection
+            available_platforms = ["Reddit", "LinkedIn"]
+            if os.getenv("DISABLE_LINKEDIN", "false").lower() == "true":
+                available_platforms = ["Reddit"]
+            platform = st.selectbox(
+                "Select Platform",
+                available_platforms,
+                index=0,
+                help="Choose which social media platform to scrape"
+            )
+            
+            st.markdown("---")
+
+            # Search input
+            if platform == "LinkedIn":
+                search_type = st.radio("Search Type", options=["keywords", "hashtag"], horizontal=True)
+
+                if search_type == "hashtag":
+                    search_query = st.text_input(
+                        "Enter Hashtag",
+                        placeholder="e.g., artificialintelligence",
+                        help="Enter hashtag without the # symbol",
+                        key="linkedin_hashtag_input"
+                    )
+                else:
+                    search_query = st.text_area(
+                        "Enter Keywords",
+                        placeholder="One keyword per line",
+                        height=100,
+                        key="linkedin_keywords_input"
+                    )
+
+                verification_code = st.text_input("Verification Code (if prompted)", type="password")
             else:
-                st.success("✅ LinkedIn credentials configured")
-        elif platform == "Reddit":
-            if error:
-                st.error(f"❌ **Setup Error**: {error}")
+                # Reddit search
+                search_query = st.text_input(
+                    "Brand/Keyword to Search",
+                    placeholder="e.g., Apple, Tesla, Nike",
+                    help="Enter the brand or keywords you want to search for on Reddit",
+                    key="reddit_search_input"
+                )
+
+            # Number of posts
+            num_posts = st.slider(
+                "Number of Posts",
+                min_value=5,
+                max_value=100,
+                value=20,
+                step=5,
+                help="How many posts to scrape"
+            )
+
+            # Reddit-specific filters
+            if platform == "Reddit":
+                time_filter_type = st.radio("Time Filter", ["Preset", "Custom Range"], index=0, horizontal=True)
+
+                if time_filter_type == "Preset":
+                    time_filter = st.selectbox(
+                        "Time Period",
+                        ["week", "month", "year", "all"],
+                        index=0,
+                        help="Filter posts by time period"
+                    )
+                    start_date = None
+                    end_date = None
+                else:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        start_date = st.date_input("Start Date")
+                    with col2:
+                        end_date = st.date_input("End Date")
+                    time_filter = "custom"
+
+                # Engagement filters
+                st.subheader("Filters")
+                min_upvotes = st.number_input("Minimum Upvotes", min_value=0, value=0)
+
+                # Region filter
+                selected_regions = st.multiselect("Region", ["Global", "North America", "Europe", "Asia", "Oceania", "South America", "Africa"], default=["Global"])
+
+            st.markdown("---")
+
+            # Search history
+            if st.session_state.search_history:
+                st.subheader("Search History")
+                for i, search in enumerate(st.session_state.search_history[-5:]):
+                    st.text(f"{search['time']}: {search['query']} ({search['count']} posts)")
+
+            # Database stats (if available)
+            if db_store:
+                try:
+                    stats = db_store.get_stats()
+                    st.header("📊 Database Stats")
+
+                    if platform == "Reddit":
+                        st.metric("Reddit Posts", stats['total_posts'])
+                    elif platform == "LinkedIn":
+                        st.metric("LinkedIn Posts", stats.get('linkedin_posts', 0))
+
+                    # Show combined total
+                    total_all = stats['total_posts'] + stats.get('linkedin_posts', 0)
+                    st.metric("Total Posts", total_all)
+                except Exception as e:
+                    pass
+        
+        # Validate credentials
+        can_search = True
+        if 'platform' in locals():
+            if platform == "LinkedIn" and not check_linkedin_credentials():
+                st.error("LinkedIn credentials missing. Set LINKEDIN_USERNAME and LINKEDIN_PASSWORD in your environment.")
+                can_search = False
+            elif platform == "Reddit" and error:
+                st.error(f"Setup Error: {error}")
                 st.markdown("""
                 **Please check:**
                 - Your `.env` file has Reddit API credentials
                 - Run `python test_apis.py` to verify setup
                 """)
-                return
+                can_search = False
         
-        st.divider()
-        
-        # Search input
-        if platform == "LinkedIn":
-            search_type = st.radio(
-                "Search Type",
-                options=["keywords", "hashtag"],
-                help="Choose between keyword search or hashtag search"
-            )
-            
-            if search_type == "hashtag":
-                search_query = st.text_input(
-                    "Enter Hashtag",
-                    placeholder="e.g., artificialintelligence",
-                    help="Enter hashtag without the # symbol"
-                )
-            else:
-                search_query = st.text_area(
-                    "Enter Keywords",
-                    placeholder="e.g., machine learning\ndata science",
-                    help="Enter one keyword per line for multiple keywords"
-                )
-            
-            # LinkedIn verification code input
-            st.subheader("🔐 Verification (if needed)")
-            verification_code = st.text_input(
-                "LinkedIn Verification Code",
-                placeholder="Enter code from email",
-                type="password",
-                help="If LinkedIn sends you a verification code via email, enter it here"
-            )
-        else:
-            # Reddit search
-            search_query = st.text_input(
-                "Brand/Keyword to Search",
-                placeholder="e.g., Apple, Tesla, Nike",
-                help="Enter the brand or keywords you want to search for on Reddit"
+        # Always-enabled search button - validate on click
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            search_button = st.button(
+                f"Search {platform if 'platform' in locals() else 'Platform'}",
+                use_container_width=True,
+                type="primary"
             )
         
-        # Number of posts
-        num_posts = st.slider(
-            "Number of Posts",
-            min_value=5,
-            max_value=100,
-            value=20,
-            step=5,
-            help="How many posts to scrape"
-        )
-        
-        # Reddit-specific filters
-        if platform == "Reddit":
-            # Time filter
-            time_filter_type = st.radio(
-                "Time Filter Type",
-                ["Preset", "Custom Range"],
-                index=0,
-                help="Choose between preset time periods or custom date range"
-            )
-            
-            if time_filter_type == "Preset":
-                time_filter = st.selectbox(
-                    "Time Period",
-                    ["week", "month", "year", "all"],
-                    index=0,
-                    help="Filter posts by time period"
-                )
-                start_date = None
-                end_date = None
-            else:
-                col1, col2 = st.columns(2)
-                with col1:
-                    start_date = st.date_input("Start Date")
-                with col2:
-                    end_date = st.date_input("End Date")
-                time_filter = "custom"
-            
-            # Engagement filters
-            st.subheader("📊 Engagement Filters")
-            min_upvotes = st.number_input(
-                "Minimum Upvotes",
-                min_value=0,
-                value=0,
-                help="Filter posts with at least this many upvotes"
-            )
-            
-            # Region filter
-            st.subheader("🌍 Region Filter")
-            selected_regions = st.multiselect(
-                "Filter by Region",
-                ["Global", "North America", "Europe", "Asia", "Oceania", "South America", "Africa"],
-                default=["Global"],
-                help="Select specific regions"
-            )
-        else:
-            # LinkedIn debug mode
-            debug_mode = st.checkbox("Debug Mode", help="Show detailed logging")
-        
-        st.markdown("---")
-        
-        # Local Runner status (only for LinkedIn)
-        if platform == "LinkedIn":
-            runner_url = os.getenv("LINKEDIN_RUNNER_URL")
-            runner_token = os.getenv("LINKEDIN_RUNNER_TOKEN")
-            status_col1, status_col2 = st.columns([3, 1])
-            with status_col1:
-                st.subheader("🏃 Local Runner Status")
-                if runner_url:
-                    try:
-                        import requests
-                        headers = {"X-Auth-Token": runner_token} if runner_token else {}
-                        r = requests.get(f"{runner_url}/health", headers=headers, timeout=8)
-                        if r.status_code == 200:
-                            st.success(f"Using Local Runner: {runner_url}")
-                        else:
-                            st.warning(f"Runner unreachable (HTTP {r.status_code}). Searches may run on server.")
-                    except Exception as e:
-                        st.warning(f"Runner check failed: {str(e)}. Searches may run on server.")
-                else:
-                    st.info("Local Runner not configured. Set LINKEDIN_RUNNER_URL to use your PC.")
-            with status_col2:
-                st.caption("If the tunnel URL changes, update LINKEDIN_RUNNER_URL on Render and redeploy.")
-        
-        # Search history
-        if st.session_state.search_history:
-            st.header("📜 Search History")
-            for i, search in enumerate(st.session_state.search_history[-5:]):
-                st.text(f"{search['time']}: {search['query']} ({search['count']} posts)")
-        
-        # Database stats (if available)
-        if db_store:
-            try:
-                stats = db_store.get_stats()
-                st.header("📊 Database Stats")
+        # Execute search with validation
+        if search_button:
+            # Validate query exists
+            if not ('search_query' in locals() and search_query):
+                st.warning("Please enter a search query.")
+            elif not can_search:
+                st.error("Cannot search - check credentials above.")
+            elif 'platform' in locals():
+                progress_placeholder = st.empty()
+                status_placeholder = st.empty()
                 
-                if platform == "Reddit":
-                    st.metric("Reddit Posts", stats['total_posts'])
-                elif platform == "LinkedIn":
-                    st.metric("LinkedIn Posts", stats.get('linkedin_posts', 0))
-                
-                # Show combined total
-                total_all = stats['total_posts'] + stats.get('linkedin_posts', 0)
-                st.metric("Total All Posts", total_all)
-            except Exception as e:
-                pass
-    
-    # Main content area
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    with col2:
-        search_button = st.button(
-            f"🚀 Search {platform}",
-            use_container_width=True,
-            type="primary",
-            disabled=not search_query
-        )
-    
-    # Execute search
-    if search_button and search_query:
-        progress_placeholder = st.empty()
-        status_placeholder = st.empty()
-        
-        try:
-            with status_placeholder.container():
-                st.info(f"🔄 Searching {platform}...")
-            
-            if platform == "LinkedIn":
-                # LinkedIn search
-                keywords = search_query.strip() if search_type == "hashtag" else \
-                          [k.strip() for k in search_query.split("\n") if k.strip()]
-                
-                with st.spinner(f"Scraping {num_posts} posts..."):
-                    runner_url = os.getenv("LINKEDIN_RUNNER_URL")
-                    runner_token = os.getenv("LINKEDIN_RUNNER_TOKEN")
-                    if runner_url:
-                        import requests
-                        # Health check before scrape to avoid fallback surprises
-                        try:
-                            headers_health = {"X-Auth-Token": runner_token} if runner_token else {}
-                            hc = requests.get(f"{runner_url}/health", headers=headers_health, timeout=8)
-                            if hc.status_code != 200:
-                                raise Exception(f"Runner health failed (HTTP {hc.status_code})")
-                        except Exception as e:
-                            raise Exception(f"Local Runner not reachable: {str(e)}. Update LINKEDIN_RUNNER_URL and redeploy.")
-                        
-                        payload = {
-                            "keywords": keywords if search_type != "hashtag" else [keywords],
-                            "search_type": search_type,
-                            "max_posts": num_posts,
-                            "verification_code": verification_code if verification_code else None,
-                            "debug": bool(debug_mode) if 'debug_mode' in locals() else False
-                        }
-                        headers = {"X-Auth-Token": runner_token} if runner_token else {}
-                        try:
-                            resp = requests.post(f"{runner_url}/scrape", json=payload, headers=headers, timeout=120)
-                            resp.raise_for_status()
-                            data = resp.json()
-                            results = data.get("results", [])
-                        except Exception as e:
-                            raise Exception(f"LinkedIn local runner error: {str(e)}")
-                    else:
-                        # Fallback: run within this process (local dev)
-                        if linkedin_scraper is None:
-                            linkedin_scraper = LinkedInScraper()
-                        results = linkedin_scraper.search_content(
-                            keywords=keywords,
-                            search_type=search_type,
-                            max_posts=num_posts,
-                            debug=debug_mode if 'debug_mode' in locals() else False,
-                            verification_code=verification_code if verification_code else None
-                        )
-            
-            else:
-                # Reddit search
-                with st.spinner(f"Scraping {num_posts} posts..."):
-                    results = reddit_scraper.search_subreddits(
-                        query=search_query,
-                        limit=num_posts,
-                        time_filter=time_filter,
-                        start_date=start_date if time_filter == "custom" else None,
-                        end_date=end_date if time_filter == "custom" else None,
-                        min_upvotes=min_upvotes,
-                        regions=None if "Global" in selected_regions else selected_regions
-                    )
-            
-            # Store results
-            st.session_state.results = results
-            st.session_state.search_query = search_query
-            st.session_state.search_platform = platform
-            st.session_state.search_time = datetime.now()
-            
-            # Add to search history
-            st.session_state.search_history.append({
-                'time': datetime.now().strftime("%H:%M:%S"),
-                'query': search_query if isinstance(search_query, str) else ", ".join(search_query) if isinstance(search_query, list) else str(search_query),
-                'count': len(results)
-            })
-            
-            # Clear status
-            status_placeholder.empty()
-            progress_placeholder.empty()
-            
-            # Success message
-            st.success(f"✅ Successfully scraped {len(results)} posts!")
-            
-            # Free memory on Render: close LinkedIn browser unless explicitly kept
-            try:
-                if platform == "LinkedIn":
-                    keep_browser = os.getenv('LINKEDIN_KEEP_BROWSER', 'false').lower() == 'true'
-                    if not keep_browser and linkedin_scraper and getattr(linkedin_scraper, 'close', None):
-                        linkedin_scraper.close()
-            except Exception:
-                pass
-            
-        except Exception as e:
-            error_message = str(e)
-            st.error(f"❌ Error occurred: {error_message}")
-            
-            # Special handling for LinkedIn verification errors
-            if "verification code" in error_message.lower() or "failed to login" in error_message.lower():
-                st.warning("""
-                ### 🔐 LinkedIn Verification Required
-                
-                LinkedIn has detected login from a new location and sent a verification code to your email.
-                
-                **Steps to continue:**
-                1. Check your email for a message from LinkedIn with a verification code
-                2. Enter the code in the **"LinkedIn Verification Code"** field in the left sidebar
-                3. Click **"🚀 Search LinkedIn"** again
-                
-                ℹ️ The browser session is kept alive, so you can retry immediately after entering the code.
-                """)
-            else:
-                # No verification expected; close browser to free memory
                 try:
-                    if platform == "LinkedIn" and linkedin_scraper and getattr(linkedin_scraper, 'close', None):
-                        linkedin_scraper.close()
-                except Exception:
-                    pass
-            
-            status_placeholder.empty()
-            progress_placeholder.empty()
+                    with status_placeholder.container():
+                        st.caption(f"Searching {platform}...")
+                    
+                    if platform == "LinkedIn":
+                        # LinkedIn search
+                        keywords = search_query.strip() if search_type == "hashtag" else \
+                                  [k.strip() for k in search_query.split("\n") if k.strip()]
+                        
+                        with st.spinner(f"Scraping {num_posts} posts..."):
+                            runner_url = os.getenv("LINKEDIN_RUNNER_URL")
+                            runner_token = os.getenv("LINKEDIN_RUNNER_TOKEN")
+                            if runner_url:
+                                import requests
+                                # Health check before scrape to avoid fallback surprises
+                                try:
+                                    headers_health = {"X-Auth-Token": runner_token} if runner_token else {}
+                                    hc = requests.get(f"{runner_url}/health", headers=headers_health, timeout=8)
+                                    if hc.status_code != 200:
+                                        raise Exception(f"Runner health failed (HTTP {hc.status_code})")
+                                except Exception as e:
+                                    raise Exception(f"Local Runner not reachable: {str(e)}. Update LINKEDIN_RUNNER_URL and redeploy.")
+                                
+                                payload = {
+                                    "keywords": keywords if search_type != "hashtag" else [keywords],
+                                    "search_type": search_type,
+                                    "max_posts": num_posts,
+                                    "verification_code": verification_code if verification_code else None,
+                                    "debug": False
+                                }
+                                headers = {"X-Auth-Token": runner_token} if runner_token else {}
+                                try:
+                                    resp = requests.post(f"{runner_url}/scrape", json=payload, headers=headers, timeout=120)
+                                    resp.raise_for_status()
+                                    data = resp.json()
+                                    results = data.get("results", [])
+                                except Exception as e:
+                                    raise Exception(f"LinkedIn local runner error: {str(e)}")
+                            else:
+                                # Fallback: run within this process (local dev)
+                                if linkedin_scraper is None:
+                                    linkedin_scraper = LinkedInScraper()
+                                results = linkedin_scraper.search_content(
+                                    keywords=keywords,
+                                    search_type=search_type,
+                                    max_posts=num_posts,
+                                    debug=False,
+                                    verification_code=verification_code if verification_code else None
+                                )
+                    
+                    else:
+                        # Reddit search
+                        with st.spinner(f"Scraping {num_posts} posts..."):
+                            results = reddit_scraper.search_subreddits(
+                                query=search_query,
+                                limit=num_posts,
+                                time_filter=time_filter,
+                                start_date=start_date if time_filter == "custom" else None,
+                                end_date=end_date if time_filter == "custom" else None,
+                                min_upvotes=min_upvotes,
+                                regions=None if "Global" in selected_regions else selected_regions
+                            )
+                    
+                    # Store results
+                    st.session_state.results = results
+                    st.session_state.search_query = search_query
+                    st.session_state.search_platform = platform
+                    st.session_state.search_time = datetime.now()
+                    
+                    # Add to search history
+                    st.session_state.search_history.append({
+                        'time': datetime.now().strftime("%H:%M:%S"),
+                        'query': search_query if isinstance(search_query, str) else ", ".join(search_query) if isinstance(search_query, list) else str(search_query),
+                        'count': len(results)
+                    })
+                    
+                    # Clear status
+                    status_placeholder.empty()
+                    progress_placeholder.empty()
+                except Exception as e:
+                    error_message = str(e)
+                    st.error(f"Error: {error_message}")
+                    if "verification code" in error_message.lower() or "failed to login" in error_message.lower():
+                        st.warning("LinkedIn verification required. Enter the code and retry.")
+                    else:
+                        try:
+                            if platform == "LinkedIn" and linkedin_scraper and getattr(linkedin_scraper, 'close', None):
+                                linkedin_scraper.close()
+                        except Exception:
+                            pass
+                    status_placeholder.empty()
+                    progress_placeholder.empty()
     
-    # Display results
+    else:
+        # Results tab content
+        # Hide sidebar on Results tab
+        st.markdown(
+            """
+            <style>
+            section[data-testid="stSidebar"] { display: none; }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.subheader("Saved Results")
+        if not db_store:
+            st.info("Database not configured.")
+        else:
+            view_platform = st.radio("Platform", ["Reddit", "LinkedIn"], horizontal=True)
+            keyword_filter = st.text_input("Keyword filter", placeholder="e.g., apple, tesla, ai")
+            limit = st.slider("Max rows", 10, 500, 100, 10)
+            st.markdown("---")
+
+            if view_platform == "Reddit":
+                if keyword_filter:
+                    posts = db_store.search_posts(keyword_filter, limit=limit)
+                else:
+                    posts = db_store.filter_by_platform("reddit", limit=limit)
+
+                if posts:
+                    # Normalize preview
+                    preview = []
+                    for p in posts:
+                        preview.append({
+                            "Subreddit": p.get("subreddit", ""),
+                            "Title": p.get("title", ""),
+                            "Author": p.get("author", ""),
+                            "Score": p.get("metrics", {}).get("score"),
+                            "Comments": p.get("metrics", {}).get("comments"),
+                            "Upvote %": p.get("metrics", {}).get("upvote_ratio"),
+                            "Created": p.get("created_at")
+                        })
+                    df = pd.DataFrame(preview)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No posts found.")
+
+            else:
+                posts = db_store.get_linkedin_posts(keyword=keyword_filter or None, limit=limit)
+                if posts:
+                    preview = []
+                    for p in posts:
+                        preview.append({
+                            "Author": p.get("author", ""),
+                            "Headline": p.get("author_headline", ""),
+                            "Posted": p.get("posted_time", ""),
+                            "Likes": p.get("metrics", {}).get("likes"),
+                            "Comments": p.get("metrics", {}).get("comments"),
+                            "Reposts": p.get("metrics", {}).get("reposts"),
+                            "Content": (p.get("content") or "")[:120]
+                        })
+                    df = pd.DataFrame(preview)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No posts found.")
+    
+    # Display results (from last scrape) - show in Search tab after scraping
     if st.session_state.results:
         results = st.session_state.results
-        platform_name = st.session_state.get('search_platform', platform)
+        platform_name = st.session_state.get('search_platform', 'Unknown')
         search_query_val = st.session_state.get('search_query', '')
         
         if platform_name == "LinkedIn":
             render_linkedin_results(results, db_store, search_query_val)
-            # Free memory after rendering: do not keep large results in session
-            try:
-                st.session_state.results = None
-            except Exception:
-                pass
+            # Keep results in session so table view and Save to DB work
+            # You can clear results manually after saving or via a button.
         
         else:
             # Reddit results
             st.divider()
-            st.header("📊 Search Results")
+            st.subheader("Results")
             
             # Summary metrics
             col1, col2, col3, col4 = st.columns(4)
@@ -752,26 +754,17 @@ def main():
                 st.metric("Total Awards", total_awards)
             
             # Preview table
-            st.subheader("📋 Post Preview")
+            st.caption("Preview")
             preview_df = format_post_preview_reddit(results)
             
             if not preview_df.empty:
                 st.dataframe(preview_df, use_container_width=True, hide_index=True)
                 
-                # Export option
-                col1, col2 = st.columns([3, 1])
-                with col2:
-                    csv_data = export_to_csv(results, 'reddit')
-                    st.download_button(
-                        label="📥 Export CSV",
-                        data=csv_data,
-                        file_name=f"reddit_posts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv"
-                    )
+                # Export removed per request
                 
                 # Save to database section
                 if db_store:
-                    st.subheader("💾 Save to Database")
+                    st.subheader("Save to Database")
                     
                     col1, col2 = st.columns([3, 1])
                     
@@ -779,9 +772,9 @@ def main():
                         st.markdown(f"""
                         **Ready to save {len(results)} posts to MongoDB?**
                         
-                        - ✅ Store all posts with full metadata
-                        - ✅ Automatically skip duplicates
-                        - ✅ Index for fast searching later
+                        - Store all posts with full metadata
+                        - Automatically skip duplicates
+                        - Indexed for fast searching later
                         """)
                     
                     with col2:
@@ -849,11 +842,11 @@ def main():
                                 save_status.empty()
                                 
                                 st.success(f"""
-                                🎉 **Save Complete!**
+                                Save complete.
                                 
-                                - ✅ **{stored_count}** new posts saved
-                                - ⚠️ **{duplicate_count}** duplicates skipped
-                                - 📊 Total: **{db_store.get_stats()['total_posts']}** posts
+                                - {stored_count} new posts saved
+                                - {duplicate_count} duplicates skipped
+                                - Total: {db_store.get_stats()['total_posts']} posts
                                 """)
                                 
                                 # Clear results
@@ -867,3 +860,12 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # Footer
+    st.markdown(
+        """
+        <div style="border-top: 1px solid var(--border); margin-top: 1.5rem; padding-top: 0.75rem; color: var(--muted); font-size: 0.9rem;">
+            MarketMind • Built for brand intelligence and social insights
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )

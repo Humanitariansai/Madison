@@ -108,6 +108,19 @@ class DataStore:
             "total_posts": self.db.linkedin_posts.count_documents({}),
             "unique_authors": len(self.db.linkedin_posts.distinct("author"))
         }
+
+    def get_linkedin_posts(self, keyword: str = None, limit: int = 100) -> List[Dict]:
+        """Fetch LinkedIn posts, optionally filtered by keyword in content or author."""
+        query = {}
+        if keyword:
+            query = {
+                "$or": [
+                    {"content": {"$regex": f".*{keyword}.*", "$options": "i"}},
+                    {"author": {"$regex": f".*{keyword}.*", "$options": "i"}}
+                ]
+            }
+        results = list(self.db.linkedin_posts.find(query, sort=[("scraped_at", -1)], limit=limit))
+        return results
     
     def get_stats(self) -> Dict:
         """Get collection statistics"""

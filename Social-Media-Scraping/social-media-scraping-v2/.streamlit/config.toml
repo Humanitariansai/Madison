@@ -1,0 +1,13 @@
+[theme]
+primaryColor = "#7aa2f7"           # blue accent for dark
+backgroundColor = "#0f1419"         # deep dark background
+secondaryBackgroundColor = "#111827" # panel background
+textColor = "#e5e7eb"               # light text
+font = "sans serif"
+
+[server]
+headless = true
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
