@@ -1,25 +1,32 @@
 # Social Media Scraping v2
 
-A robust, ethical social media data collection tool that scrapes public data from multiple platforms for sentiment analysis, trend tracking, and market research purposes.
+A robust, ethical social media data collection tool that scrapes public data from multiple platforms for sentiment analysis, trend tracking, and market research.
 
 ## 🚀 Features
 
-- **Multi-Platform Support**: Reddit, LinkedIn (with dedicated Streamlit UIs)
-- **Ethical Scraping**: Rate limiting, robots.txt compliance, public data only
-- **Robust Storage**: MongoDB with duplicate detection and separate collections per platform
-- **Interactive UI**: Streamlit apps for Reddit and LinkedIn scraping with real-time results
-- **Rate Limiting**: Built-in protection against API abuse
-- **Data Export**: CSV export with one-click download from UI
-- **Duplicate Detection**: Content-hash based deduplication for LinkedIn, ID-based for Reddit
-- **Analytics Dashboard**: Real-time engagement metrics and top posts analysis
+- **Multi-Platform Support**: Reddit and LinkedIn
+- **Production-Ready UI**: Streamlit-based, dark theme, accessible nav (radio with hidden label)
+- **Results View**: Browse saved Reddit/LinkedIn posts with keyword filter and row limit
+- **Session Stability**: LinkedIn table view persists across reruns; sidebar only on Search
+- **Ethical Scraping**: Rate limiting, public data only
+- **Robust Storage**: MongoDB with duplicate detection (content-hash for LinkedIn, ID for Reddit)
+- **LinkedIn Runner**: Local FastAPI runner on `:9000`, works with Cloudflared Quick Tunnel
+- **Analytics**: Engagement metrics available in UI and via API
+
+Notes
+- UI export buttons were removed per UX feedback; CSV export is available via API endpoints.
 
 ## 🛠 Tech Stack
 
-- **Backend**: Python 3.10+
-- **APIs**: Twitter API v2, Reddit API (PRAW)
-- **Database**: MongoDB (Atlas)
-- **Data Processing**: Pandas, NumPy
-- **Environment**: python-dotenv
+- **Language**: Python 3.11
+- **UI**: Streamlit 1.28.x (custom dark theme via `.streamlit/config.toml`)
+- **API**: FastAPI + Uvicorn (local LinkedIn runner and REST API)
+- **Scraping**: Selenium 4 + webdriver-manager, PRAW for Reddit
+- **Parsing**: BeautifulSoup4, lxml
+- **Data**: MongoDB (Atlas or local) via PyMongo
+- **Utilities**: pandas, python-dotenv, psutil
+- **Tunneling**: Cloudflared (Quick Tunnel) for sharing local runner
+- **Container**: Dockerfile + Render deployment (free plan supported)
 
 ## 📁 Project Structure
 
@@ -28,24 +35,24 @@ social-media-scraping-v2/
 ├── src/
 │   ├── scrapers/
 │   │   ├── linkedin_scraper.py   # LinkedIn Selenium-based scraper
-│   │   ├── reddit_scraper.py     # Reddit PRAW integration
-│   │   └── base_scraper.py       # Base scraper class
+│   │   └── reddit_scraper.py     # Reddit PRAW integration
 │   ├── storage/
 │   │   └── db.py                 # MongoDB data storage (posts + linkedin_posts)
-│   ├── utils/
-│   │   └── rate_limiter.py       # API rate limiting
-│   └── tools/                    # Performance and utility scripts
-├── tests/
-│   ├── test_integration.py       # Integration tests (Reddit + LinkedIn)
-│   └── test_scrapers.py          # Unit tests
-├── examples/                     # Usage examples and sample scripts
-├── ethics/
-│   └── ETHICAL_GUIDELINES.md     # Ethical scraping guidelines
-├── app.py                        # Original Reddit-focused Streamlit app
-├── app_v2.py                     # LinkedIn-only Streamlit app
+│   └── utils/
+│       ├── rate_limiter.py       # API rate limiting
+│       └── config.py             # Utility config helpers
+├── api/
+│   ├── main.py                   # REST API (stats, posts, exports)
+│   └── webhooks.py               # Webhook endpoints
 ├── app_combined.py               # Combined Reddit + LinkedIn app (recommended)
+├── app.py                        # Legacy Reddit-focused Streamlit app (optional)
+├── app_v2.py                     # Legacy LinkedIn-only Streamlit app (optional)
+├── local_linkedin_runner.py      # Local FastAPI runner for LinkedIn scraping (:9000)
+├── .streamlit/config.toml        # Dark theme and Streamlit settings
 ├── requirements.txt              # Python dependencies
-└── .env                          # Environment variables
+├── Dockerfile                    # Containerized Streamlit app
+├── render.yaml                   # Render deployment configuration
+└── README.md                     # This file
 ```
 
 ## ⚡ Quick Start
@@ -67,7 +74,7 @@ pip install -r requirements.txt
 
 ### 2. Configuration
 
-Create a `.env` file in the project root with your API credentials:
+Create a `.env` file in the project root with your credentials:
 
 ```env
 # Reddit API (get from https://www.reddit.com/prefs/apps)
@@ -79,6 +86,9 @@ REDDIT_USER_AGENT="SocialMediaScraper/1.0"
 LINKEDIN_USERNAME="your_email@example.com"
 LINKEDIN_PASSWORD="your_linkedin_password"
 
+# Optional: shared secret for local runner
+LINKEDIN_RUNNER_TOKEN="some-secret"
+
 # MongoDB (Atlas or local)
 MONGODB_URI="mongodb://localhost:27017"
 # OR for MongoDB Atlas:
@@ -89,7 +99,7 @@ MONGODB_URI="mongodb://localhost:27017"
 
 ### 3. Usage
 
-#### Option A: Streamlit UI (Recommended for Quick Start)
+#### Option A: Streamlit UI (Recommended)
 
 Run the combined app supporting both Reddit and LinkedIn:
 
@@ -108,13 +118,12 @@ streamlit run app.py
 ```
 
 **Features in Streamlit UI:**
-- Platform selection (Reddit/LinkedIn)
-- Real-time scraping progress
-- Card-based or table view results
-- One-click CSV export
+- Pill-style Search/Results navigation (accessible radio; label hidden)
+- Sidebar visible only on Search; Results shows saved posts
+- Keyword filter and row limit for Results
+- Real-time progress and engagement metrics
 - Save to MongoDB with duplicate detection
-- Engagement analytics and top posts
-- Search history tracking
+- No UI export buttons; use API export endpoints if needed
 
 #### Option B: Programmatic Usage
 
@@ -156,7 +165,7 @@ for post in posts:
     })
 ```
 
-**LinkedIn Scraping:**
+**LinkedIn Scraping (Programmatic):**
 
 ```python
 from src.scrapers.linkedin_scraper import LinkedInScraper
@@ -195,7 +204,23 @@ for post in posts:
     })
 ```
 
-### 4. Testing
+### 4. LinkedIn Local Runner + Cloudflared
+
+Run the LinkedIn runner locally (port 9000):
+
+```bash
+python local_linkedin_runner.py
+```
+
+Share it with a temporary public URL using Cloudflared Quick Tunnel:
+
+```bash
+cloudflared tunnel --url http://localhost:9000
+```
+
+The tunnel output prints a `https://<random>.trycloudflare.com` URL you can call from the UI or external tools. For a permanent hostname, you need a domain on Cloudflare and a Named Tunnel.
+
+### 5. Testing
 
 ```bash
 # Run integration tests (covers Reddit + LinkedIn)
@@ -436,6 +461,12 @@ See [ETHICAL_GUIDELINES.md](ethics/ETHICAL_GUIDELINES.md) for full details.
 
 ### Streamlit App Issues
 
+- Clear cache quickly from code:
+  ```python
+  import streamlit as st
+  st.cache_data.clear(); st.cache_resource.clear(); st.session_state.clear(); st.rerun()
+  ```
+
 - **`DuplicateWidgetID` Error**: Fixed in latest version; ensure you're running updated `app_combined.py` or `app_v2.py`
 - **Import Errors**: 
   ```bash
@@ -500,4 +531,4 @@ If you encounter any issues:
 
 ---
 
-*Last Updated: October 27, 2025*
+*Last Updated: December 3, 2025*
