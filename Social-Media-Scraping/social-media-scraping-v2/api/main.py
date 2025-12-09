@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import sys
 import os
-from datetime import date
+from datetime import date, datetime
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -95,6 +95,92 @@ def search_reddit(
         return {"total": len(posts), "posts": posts}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Reddit search failed: {str(e)}")
+
+
+@app.post("/reddit/save")
+def save_reddit_posts(payload: Dict[str, Any]):
+    """Save Reddit posts to the database in bulk."""
+    posts = payload.get("posts") or []
+    brand = payload.get("brand") or payload.get("search_brand")
+
+    if not isinstance(posts, list) or not posts:
+        raise HTTPException(status_code=400, detail="No posts provided to save")
+
+    stored_count = 0
+    duplicate_count = 0
+    error_count = 0
+
+    for post in posts:
+        created_at = post.get("created_at")
+        edited_at = post.get("edited") or post.get("edited_at")
+
+        # Normalize timestamps if they arrived as strings
+        if isinstance(created_at, str):
+            try:
+                created_at = datetime.fromisoformat(created_at)
+            except Exception:
+                pass
+        if isinstance(edited_at, str):
+            try:
+                edited_at = datetime.fromisoformat(edited_at)
+            except Exception:
+                pass
+
+        post_data = {
+            "id": post.get("id"),
+            "platform": "reddit",
+            "title": post.get("title"),
+            "content": post.get("text") or post.get("content"),
+            "author": post.get("author"),
+            "url": post.get("url"),
+            "permalink": post.get("permalink"),
+            "domain": post.get("domain"),
+            "subreddit": post.get("subreddit"),
+            "metrics": {
+                "score": post.get("score"),
+                "comments": post.get("comments"),
+                "upvote_ratio": post.get("upvote_ratio"),
+                "gilded": post.get("gilded", 0),
+                "total_awards": post.get("total_awards", 0),
+            },
+            "content_flags": {
+                "nsfw": post.get("nsfw", False),
+                "spoiler": post.get("spoiler", False),
+                "stickied": post.get("stickied", False),
+                "locked": post.get("locked", False),
+                "archived": post.get("archived", False),
+                "distinguished": post.get("distinguished"),
+                "is_video": post.get("is_video", False),
+                "is_original_content": post.get("is_original_content", False),
+                "is_self": post.get("is_self", False),
+            },
+            "flair": {
+                "link_flair_text": post.get("link_flair_text"),
+                "link_flair_css_class": post.get("link_flair_css_class"),
+                "author_flair_text": post.get("author_flair_text"),
+            },
+            "created_at": created_at,
+            "edited_at": edited_at,
+            "search_brand": brand,
+            "scraped_via": "static_frontend",
+            "scraped_at": datetime.utcnow(),
+        }
+
+        try:
+            if store.insert_post(post_data):
+                stored_count += 1
+            else:
+                duplicate_count += 1
+        except Exception:
+            error_count += 1
+
+    return {
+        "status": "ok",
+        "stored": stored_count,
+        "duplicates": duplicate_count,
+        "errors": error_count,
+        "total_received": len(posts),
+    }
 
 @app.get("/posts")
 def get_posts(platform: Optional[str] = None, limit: int = 100):

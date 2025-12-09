@@ -16,11 +16,6 @@
       <p class="eyebrow">Reddit only · FastAPI + reddit_scraper.py</p>
       <h1>Reddit Signals Dashboard</h1>
       <p class="lede">Search Reddit for any brand or idea, filter the noise, and read clean, ranked results powered by your local scraper backend.</p>
-      <div class="pill-row">
-        <span class="pill">Endpoint: /reddit/search</span>
-        <span class="pill">Filters: time, region, score</span>
-        <span class="pill accent">Frontend: HTML + CSS + vanilla JS</span>
-      </div>
     </header>
 
     <section class="panel-grid">
@@ -87,11 +82,7 @@
             </div>
           </div>
 
-          <div class="field">
-            <label for="api_base">API base URL</label>
-            <input id="api_base" name="api_base" type="url" value="http://localhost:8000" spellcheck="false">
-            <small class="hint">Keep the default if you run: uvicorn api.main:app --reload</small>
-          </div>
+          <input id="api_base" name="api_base" type="hidden" value="">
 
           <button class="btn" type="submit">Run Reddit search</button>
           <p id="feedback" class="feedback" role="status"></p>
@@ -116,10 +107,6 @@
             <p id="stat-upvote" class="stat-value">0%</p>
           </div>
         </div>
-        <div class="note">
-          <p class="note-title">How it works</p>
-          <p class="note-body">This page calls your FastAPI endpoint which wraps reddit_scraper.py. Filters map directly to the scraper inputs, and results render as cards below. All client-side, no extra services.</p>
-        </div>
       </section>
     </section>
 
@@ -129,13 +116,45 @@
           <p class="eyebrow">Results</p>
           <h2>Latest pull</h2>
         </div>
-        <div id="results-count" class="chip accent">0 posts</div>
+        <div class="panel-actions">
+          <div id="results-count" class="chip accent">0 posts</div>
+          <button id="download-btn" type="button" class="btn download" disabled>⬇️ Download CSV</button>
+          <button id="save-btn" type="button" class="btn" disabled>💾 Save to DB</button>
+        </div>
       </div>
       <div id="results-grid" class="results-grid">
         <div class="empty">Waiting for your first search.</div>
       </div>
+      <p id="save-status" class="feedback"></p>
     </section>
   </main>
+
+  <div id="save-modal" class="modal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Save complete</p>
+          <h3>Posts stored</h3>
+        </div>
+        <button id="modal-close" type="button" class="btn secondary">Close</button>
+      </div>
+      <div class="modal-stats">
+        <div class="stat">
+          <p class="stat-label">Saved</p>
+          <p id="modal-saved" class="stat-value">0</p>
+        </div>
+        <div class="stat">
+          <p class="stat-label">Duplicates</p>
+          <p id="modal-dupes" class="stat-value">0</p>
+        </div>
+        <div class="stat">
+          <p class="stat-label">Errors</p>
+          <p id="modal-errors" class="stat-value">0</p>
+        </div>
+      </div>
+      <p class="lede" id="modal-detail"></p>
+    </div>
+  </div>
 
   <script>
     const form = document.getElementById('search-form');
@@ -153,6 +172,38 @@
     const resultsCount = document.getElementById('results-count');
     const resultsGrid = document.getElementById('results-grid');
     const apiBaseInput = document.getElementById('api_base');
+    const downloadBtn = document.getElementById('download-btn');
+    const saveBtn = document.getElementById('save-btn');
+    const saveStatus = document.getElementById('save-status');
+    const modal = document.getElementById('save-modal');
+    const modalClose = document.getElementById('modal-close');
+    const modalSaved = document.getElementById('modal-saved');
+    const modalDupes = document.getElementById('modal-dupes');
+    const modalErrors = document.getElementById('modal-errors');
+    const modalDetail = document.getElementById('modal-detail');
+
+    let lastPosts = [];
+    let lastBrand = '';
+    let apiBaseCurrent = '';
+
+    const showSaveModal = (result) => {
+      modalSaved.textContent = result.stored ?? 0;
+      modalDupes.textContent = result.duplicates ?? 0;
+      modalErrors.textContent = result.errors ?? 0;
+      modalDetail.textContent = `Total received: ${result.total_received ?? 0}`;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+    };
+
+    const closeSaveModal = () => {
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+    };
+
+    modalClose.addEventListener('click', closeSaveModal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeSaveModal();
+    });
 
     const inferredApiBase = (() => {
       const fromAttr = document.documentElement.dataset.apiBase;
@@ -160,6 +211,7 @@
       return 'http://localhost:8000';
     })();
     if (!apiBaseInput.value) apiBaseInput.value = inferredApiBase;
+    apiBaseCurrent = apiBaseInput.value;
 
     timeFilter.addEventListener('change', () => {
       const isCustom = timeFilter.value === 'custom';
@@ -217,6 +269,8 @@
         statUpvote.textContent = '0%';
         resultsTitle.textContent = 'No matches found';
         resultsSubtitle.textContent = 'Adjust filters and try again.';
+        downloadBtn.disabled = true;
+        saveBtn.disabled = true;
         return;
       }
 
@@ -227,6 +281,8 @@
       resultsCount.textContent = `${posts.length} posts`;
       resultsTitle.textContent = `${brand ? brand : 'Your brand'} on Reddit`;
       resultsSubtitle.textContent = 'Sorted by relevance from the scraper backend.';
+      downloadBtn.disabled = false;
+      saveBtn.disabled = false;
 
       posts.forEach((post) => {
         const card = document.createElement('article');
@@ -260,6 +316,7 @@
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       feedback.textContent = '';
+      saveStatus.textContent = '';
 
       const formData = new FormData(form);
       const query = formData.get('query');
@@ -269,6 +326,7 @@
       }
 
       const apiBase = (formData.get('api_base') || inferredApiBase || '').toString().replace(/\/$/, '');
+      apiBaseCurrent = apiBase;
       const params = new URLSearchParams();
       params.set('query', query);
       params.set('limit', formData.get('limit') || '30');
@@ -305,7 +363,9 @@
           throw new Error(`Request failed with status ${response.status}`);
         }
         const data = await response.json();
-        renderResults(data.posts || [], query.toString());
+        lastPosts = data.posts || [];
+        lastBrand = query.toString();
+        renderResults(lastPosts, lastBrand);
         feedback.textContent = `Fetched ${data.total || 0} posts.`;
         setStatus('Success', '');
       } catch (err) {
@@ -315,6 +375,71 @@
         setStatus('Error', 'error');
       } finally {
         resultsGrid.classList.remove('loading');
+      }
+    });
+
+    const downloadCsv = () => {
+      if (!lastPosts.length) return;
+      const headers = [
+        'id','title','text','subreddit','author','url','permalink','score','comments','upvote_ratio','created_at'
+      ];
+      const rows = lastPosts.map(p => [
+        p.id || '',
+        (p.title || '').replace(/"/g, '""'),
+        (p.text || '').replace(/"/g, '""'),
+        p.subreddit || '',
+        p.author || '',
+        p.url || '',
+        p.permalink || '',
+        p.score ?? '',
+        p.comments ?? '',
+        p.upvote_ratio ?? '',
+        p.created_at || ''
+      ]);
+      const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${lastBrand || 'reddit'}-results.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    downloadBtn.addEventListener('click', downloadCsv);
+
+    saveBtn.addEventListener('click', async () => {
+      if (!lastPosts.length) {
+        saveStatus.textContent = 'No posts to save. Run a search first.';
+        return;
+      }
+      saveBtn.disabled = true;
+      saveStatus.textContent = 'Saving posts to database...';
+      try {
+        const response = await fetch(`${apiBaseCurrent}/reddit/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ posts: lastPosts, brand: lastBrand }),
+        });
+        if (!response.ok) {
+          throw new Error(`Save failed with status ${response.status}`);
+        }
+        const result = await response.json();
+        saveStatus.textContent = `Saved ${result.stored} new, ${result.duplicates} duplicates skipped, ${result.errors} errors.`;
+        if (result.errors === 0) {
+          setStatus('Saved to DB', '');
+          // Clear local results and return user to the top/home view
+          lastPosts = [];
+          renderResults([], '');
+          saveBtn.disabled = true;
+          showSaveModal(result);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      } catch (err) {
+        console.error(err);
+        saveStatus.textContent = `Error saving: ${err.message}`;
+      } finally {
+        saveBtn.disabled = false;
       }
     });
   </script>

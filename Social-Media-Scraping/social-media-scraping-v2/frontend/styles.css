@@ -121,6 +121,51 @@ body {
   margin: 4px 0 0;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 20;
+}
+
+.modal.open {
+  display: flex;
+}
+
+.modal-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 18px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  border: 1px solid var(--border);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 10px;
+}
+
 .form {
   display: flex;
   flex-direction: column;
@@ -195,6 +240,30 @@ body {
 
 .btn:active {
   transform: translateY(0);
+}
+
+.btn.secondary {
+  background: #ffffff;
+  color: var(--primary-strong);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.btn.secondary:hover {
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
+  transform: translateY(-1px);
+}
+
+.btn.download {
+  background: #ffd54f;
+  color: #111111;
+  border: 1px solid #f0c233;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
+}
+
+.btn.download:hover {
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
 }
 
 .feedback {
