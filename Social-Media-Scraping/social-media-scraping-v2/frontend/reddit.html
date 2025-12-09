@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-api-base="%%API_BASE_URL%%">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -152,6 +152,14 @@
     const statUpvote = document.getElementById('stat-upvote');
     const resultsCount = document.getElementById('results-count');
     const resultsGrid = document.getElementById('results-grid');
+    const apiBaseInput = document.getElementById('api_base');
+
+    const inferredApiBase = (() => {
+      const fromAttr = document.documentElement.dataset.apiBase;
+      if (fromAttr && fromAttr !== '%%API_BASE_URL%%') return fromAttr;
+      return 'http://localhost:8000';
+    })();
+    if (!apiBaseInput.value) apiBaseInput.value = inferredApiBase;
 
     timeFilter.addEventListener('change', () => {
       const isCustom = timeFilter.value === 'custom';
@@ -260,7 +268,7 @@
         return;
       }
 
-      const apiBase = (formData.get('api_base') || '').toString().replace(/\/$/, '');
+      const apiBase = (formData.get('api_base') || inferredApiBase || '').toString().replace(/\/$/, '');
       const params = new URLSearchParams();
       params.set('query', query);
       params.set('limit', formData.get('limit') || '30');
