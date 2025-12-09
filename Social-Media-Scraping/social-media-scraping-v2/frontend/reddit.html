@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reddit Signals Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="ambient"></div>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">Reddit only · FastAPI + reddit_scraper.py</p>
+      <h1>Reddit Signals Dashboard</h1>
+      <p class="lede">Search Reddit for any brand or idea, filter the noise, and read clean, ranked results powered by your local scraper backend.</p>
+      <div class="pill-row">
+        <span class="pill">Endpoint: /reddit/search</span>
+        <span class="pill">Filters: time, region, score</span>
+        <span class="pill accent">Frontend: HTML + CSS + vanilla JS</span>
+      </div>
+    </header>
+
+    <section class="panel-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Search controls</p>
+            <h2>Run a Reddit query</h2>
+          </div>
+          <div id="status-chip" class="chip">Idle</div>
+        </div>
+
+        <form id="search-form" class="form">
+          <div class="field">
+            <label for="query">Keyword or brand</label>
+            <input id="query" name="query" type="text" placeholder="e.g., apple vision pro" required>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="limit">Post count</label>
+              <input id="limit" name="limit" type="number" min="5" max="100" value="30">
+            </div>
+            <div class="field">
+              <label for="min_upvotes">Minimum score</label>
+              <input id="min_upvotes" name="min_upvotes" type="number" min="0" value="0">
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="time_filter">Time window</label>
+              <select id="time_filter" name="time_filter">
+                <option value="week">Past week</option>
+                <option value="month">Past month</option>
+                <option value="year">Past year</option>
+                <option value="all">All time</option>
+                <option value="custom">Custom range</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="regions">Regions</label>
+              <select id="regions" name="regions" multiple>
+                <option value="Global" selected>Global (default)</option>
+                <option value="North America">North America</option>
+                <option value="Europe">Europe</option>
+                <option value="Asia">Asia</option>
+                <option value="Oceania">Oceania</option>
+                <option value="South America">South America</option>
+                <option value="Africa">Africa</option>
+              </select>
+              <small class="hint">Hold Cmd/Ctrl to pick multiple regions.</small>
+            </div>
+          </div>
+
+          <div id="custom-dates" class="field-row is-disabled" aria-hidden="true">
+            <div class="field">
+              <label for="start_date">Start date</label>
+              <input id="start_date" name="start_date" type="date" disabled>
+            </div>
+            <div class="field">
+              <label for="end_date">End date</label>
+              <input id="end_date" name="end_date" type="date" disabled>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="api_base">API base URL</label>
+            <input id="api_base" name="api_base" type="url" value="http://localhost:8000" spellcheck="false">
+            <small class="hint">Keep the default if you run: uvicorn api.main:app --reload</small>
+          </div>
+
+          <button class="btn" type="submit">Run Reddit search</button>
+          <p id="feedback" class="feedback" role="status"></p>
+        </form>
+      </section>
+
+      <section class="panel info">
+        <p class="eyebrow">Status</p>
+        <h2 id="results-title">No search yet</h2>
+        <p id="results-subtitle" class="lede">Pick a brand and hit the button to pull in Reddit chatter.</p>
+        <div class="stat-grid">
+          <div class="stat">
+            <p class="stat-label">Posts returned</p>
+            <p id="stat-count" class="stat-value">0</p>
+          </div>
+          <div class="stat">
+            <p class="stat-label">Avg score</p>
+            <p id="stat-score" class="stat-value">0</p>
+          </div>
+          <div class="stat">
+            <p class="stat-label">Avg upvote %</p>
+            <p id="stat-upvote" class="stat-value">0%</p>
+          </div>
+        </div>
+        <div class="note">
+          <p class="note-title">How it works</p>
+          <p class="note-body">This page calls your FastAPI endpoint which wraps reddit_scraper.py. Filters map directly to the scraper inputs, and results render as cards below. All client-side, no extra services.</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Results</p>
+          <h2>Latest pull</h2>
+        </div>
+        <div id="results-count" class="chip accent">0 posts</div>
+      </div>
+      <div id="results-grid" class="results-grid">
+        <div class="empty">Waiting for your first search.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('search-form');
+    const timeFilter = document.getElementById('time_filter');
+    const customDates = document.getElementById('custom-dates');
+    const startDate = document.getElementById('start_date');
+    const endDate = document.getElementById('end_date');
+    const feedback = document.getElementById('feedback');
+    const statusChip = document.getElementById('status-chip');
+    const resultsTitle = document.getElementById('results-title');
+    const resultsSubtitle = document.getElementById('results-subtitle');
+    const statCount = document.getElementById('stat-count');
+    const statScore = document.getElementById('stat-score');
+    const statUpvote = document.getElementById('stat-upvote');
+    const resultsCount = document.getElementById('results-count');
+    const resultsGrid = document.getElementById('results-grid');
+
+    timeFilter.addEventListener('change', () => {
+      const isCustom = timeFilter.value === 'custom';
+      customDates.classList.toggle('is-disabled', !isCustom);
+      customDates.setAttribute('aria-hidden', String(!isCustom));
+      startDate.disabled = !isCustom;
+      endDate.disabled = !isCustom;
+    });
+
+    const escapeHtml = (str) => {
+      if (!str) return '';
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    };
+
+    const formatDate = (value) => {
+      if (!value) return 'Unknown';
+      try {
+        const date = new Date(value);
+        return date.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      } catch (err) {
+        return value;
+      }
+    };
+
+    const truncate = (value, limit = 220) => {
+      if (!value) return '';
+      return value.length > limit ? `${value.slice(0, limit)}...` : value;
+    };
+
+    const setStatus = (label, tone = 'idle') => {
+      statusChip.textContent = label;
+      statusChip.className = `chip ${tone === 'error' ? 'danger' : tone === 'live' ? 'accent' : ''}`;
+    };
+
+    const computeStats = (posts) => {
+      if (!posts.length) return { avgScore: 0, avgUpvote: 0 };
+      const avgScore = posts.reduce((sum, p) => sum + (p.score || 0), 0) / posts.length;
+      const avgUpvote = posts.reduce((sum, p) => sum + (p.upvote_ratio || 0), 0) / posts.length;
+      return { avgScore, avgUpvote };
+    };
+
+    const renderResults = (posts, brand) => {
+      resultsGrid.innerHTML = '';
+
+      if (!posts.length) {
+        resultsGrid.innerHTML = '<div class="empty">No posts matched your filters. Try widening the time window or reducing the score threshold.</div>';
+        resultsCount.textContent = '0 posts';
+        statCount.textContent = '0';
+        statScore.textContent = '0';
+        statUpvote.textContent = '0%';
+        resultsTitle.textContent = 'No matches found';
+        resultsSubtitle.textContent = 'Adjust filters and try again.';
+        return;
+      }
+
+      const { avgScore, avgUpvote } = computeStats(posts);
+      statCount.textContent = String(posts.length);
+      statScore.textContent = avgScore.toFixed(1);
+      statUpvote.textContent = `${Math.round(avgUpvote * 100)}%`;
+      resultsCount.textContent = `${posts.length} posts`;
+      resultsTitle.textContent = `${brand ? brand : 'Your brand'} on Reddit`;
+      resultsSubtitle.textContent = 'Sorted by relevance from the scraper backend.';
+
+      posts.forEach((post) => {
+        const card = document.createElement('article');
+        card.className = 'card';
+
+        const flairLabels = [];
+        if (post.is_video) flairLabels.push('Video');
+        if (post.is_self) flairLabels.push('Text');
+        if (post.spoiler) flairLabels.push('Spoiler');
+        if (post.nsfw) flairLabels.push('NSFW');
+        if (post.stickied) flairLabels.push('Stickied');
+
+        const flairHtml = flairLabels.map((label) => `<span class="chip muted">${escapeHtml(label)}</span>`).join('');
+        const permalink = post.permalink || post.url || '#';
+
+        card.innerHTML = `
+          <div class="card-top">
+            <div class="chip muted">r/${escapeHtml(post.subreddit || 'unknown')}</div>
+            <a class="link" href="${escapeHtml(permalink)}" target="_blank" rel="noopener noreferrer">Open thread</a>
+          </div>
+          <h3>${escapeHtml(truncate(post.title || 'Untitled', 160))}</h3>
+          <p class="meta">Score ${post.score || 0} · Comments ${post.comments || 0} · Upvote ${post.upvote_ratio ? Math.round(post.upvote_ratio * 100) : 0}% · ${formatDate(post.created_at)}</p>
+          <p class="snippet">${escapeHtml(truncate(post.text || '', 260))}</p>
+          <div class="card-tags">${flairHtml || '<span class="chip muted">Clean</span>'}</div>
+        `;
+
+        resultsGrid.appendChild(card);
+      });
+    };
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      feedback.textContent = '';
+
+      const formData = new FormData(form);
+      const query = formData.get('query');
+      if (!query) {
+        feedback.textContent = 'Please enter a keyword or brand.';
+        return;
+      }
+
+      const apiBase = (formData.get('api_base') || '').toString().replace(/\/$/, '');
+      const params = new URLSearchParams();
+      params.set('query', query);
+      params.set('limit', formData.get('limit') || '30');
+      params.set('min_upvotes', formData.get('min_upvotes') || '0');
+
+      const filter = formData.get('time_filter');
+      params.set('time_filter', filter || 'week');
+      if (filter === 'custom') {
+        const start = formData.get('start_date');
+        const end = formData.get('end_date');
+        if (!start || !end) {
+          feedback.textContent = 'Set both start and end dates for a custom window.';
+          return;
+        }
+        params.set('start_date', start);
+        params.set('end_date', end);
+      }
+
+      const regionOptions = Array.from(document.getElementById('regions').selectedOptions).map((opt) => opt.value);
+      const regions = regionOptions.filter((val) => val !== 'Global');
+      if (regions.length) {
+        params.set('regions', regions.join(','));
+      }
+
+      const url = `${apiBase || 'http://localhost:8000'}/reddit/search?${params.toString()}`;
+
+      setStatus('Requesting...', 'live');
+      feedback.textContent = 'Fetching posts from the API...';
+      resultsGrid.classList.add('loading');
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+        const data = await response.json();
+        renderResults(data.posts || [], query.toString());
+        feedback.textContent = `Fetched ${data.total || 0} posts.`;
+        setStatus('Success', '');
+      } catch (err) {
+        console.error(err);
+        feedback.textContent = `Error: ${err.message}`;
+        renderResults([], '');
+        setStatus('Error', 'error');
+      } finally {
+        resultsGrid.classList.remove('loading');
+      }
+    });
+  </script>
+</body>
+</html>
