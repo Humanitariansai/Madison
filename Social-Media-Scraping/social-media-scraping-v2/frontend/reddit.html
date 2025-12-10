@@ -16,8 +16,13 @@
       <p class="eyebrow">Reddit only · FastAPI + reddit_scraper.py</p>
       <h1>Reddit Signals Dashboard</h1>
       <p class="lede">Search Reddit for any brand or idea, filter the noise, and read clean, ranked results powered by your local scraper backend.</p>
+      <div class="hero-tabs">
+        <button id="tab-search" class="tab active">Search Live</button>
+        <button id="tab-db" class="tab">View Database</button>
+      </div>
     </header>
 
+    <section id="view-search" class="view active">
     <section class="panel-grid">
       <section class="panel">
         <div class="panel-header">
@@ -59,7 +64,7 @@
             <div class="field">
               <label for="regions">Regions</label>
               <select id="regions" name="regions" multiple>
-                <option value="Global" selected>Global (default)</option>
+                <option value="All" selected>All (no regional filter)</option>
                 <option value="North America">North America</option>
                 <option value="Europe">Europe</option>
                 <option value="Asia">Asia</option>
@@ -67,7 +72,43 @@
                 <option value="South America">South America</option>
                 <option value="Africa">Africa</option>
               </select>
-              <small class="hint">Hold Cmd/Ctrl to pick multiple regions.</small>
+              <small class="hint">Hold Cmd/Ctrl to pick multiple regions. Choose All for full coverage.</small>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="include_subs">Include subreddits</label>
+              <input id="include_subs" name="include_subs" type="text" placeholder="askreddit, technology">
+              <small class="hint">Comma separated. Leave empty for any.</small>
+            </div>
+            <div class="field">
+              <label for="exclude_subs">Exclude subreddits</label>
+              <input id="exclude_subs" name="exclude_subs" type="text" placeholder="politics, worldnews">
+              <small class="hint">Comma separated subreddits to skip.</small>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="sort">Sort by</label>
+              <select id="sort" name="sort">
+                <option value="relevance" selected>Relevance (default)</option>
+                <option value="score">Score (top)</option>
+                <option value="comments">Comments</option>
+                <option value="new">Newest</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Match scope</label>
+              <div class="pill-row">
+                <label class="pill">
+                  <input type="radio" name="search_scope" value="title_body" checked> Title + body
+                </label>
+                <label class="pill">
+                  <input type="radio" name="search_scope" value="title"> Title only
+                </label>
+              </div>
             </div>
           </div>
 
@@ -122,10 +163,104 @@
           <button id="save-btn" type="button" class="btn" disabled>💾 Save to DB</button>
         </div>
       </div>
-      <div id="results-grid" class="results-grid">
-        <div class="empty">Waiting for your first search.</div>
+      <div id="results-table" class="results-table">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Subreddit</th>
+                <th>Title</th>
+                <th>Body</th>
+                <th>Score</th>
+                <th>Comments</th>
+                <th>Upvote %</th>
+                <th>Author</th>
+                <th>Date</th>
+                <th>Link</th>
+              </tr>
+            </thead>
+            <tbody id="results-table-body">
+              <tr><td colspan="9" class="empty-row">Waiting for your first search.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
       <p id="save-status" class="feedback"></p>
+    </section>
+    </section>
+
+    <section id="view-db" class="view">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Database filters</p>
+            <h2>View saved posts</h2>
+          </div>
+        </div>
+        <form id="db-form" class="form">
+          <div class="field-row">
+            <div class="field">
+              <label for="db-brand">Brand/Keyword</label>
+              <input id="db-brand" name="db-brand" type="text" placeholder="e.g., Apple">
+            </div>
+            <div class="field">
+              <label for="db-subreddit">Subreddit</label>
+              <input id="db-subreddit" name="db-subreddit" type="text" placeholder="e.g., technology">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="db-limit">Post count</label>
+              <input id="db-limit" name="db-limit" type="number" min="5" max="200" value="50">
+            </div>
+            <div class="field">
+              <label for="db-min-score">Minimum score</label>
+              <input id="db-min-score" name="db-min-score" type="number" min="0" value="0">
+            </div>
+          </div>
+          <div class="field-row">
+            <button class="btn" type="submit">Load from Database</button>
+            <button id="db-view-all-btn" type="button" class="btn secondary">View All Posts</button>
+          </div>
+          <p id="db-feedback" class="feedback" role="status"></p>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Database results</p>
+            <h2>Saved posts</h2>
+          </div>
+          <div class="panel-actions">
+            <div id="db-results-count" class="chip accent">0 posts</div>
+            <button id="db-download-btn" type="button" class="btn download" disabled>⬇️ Download CSV</button>
+          </div>
+        </div>
+        <div id="db-results-table" class="results-table">
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Subreddit</th>
+                  <th>Title</th>
+                  <th>Body</th>
+                  <th>Score</th>
+                  <th>Comments</th>
+                  <th>Upvote %</th>
+                  <th>Author</th>
+                  <th>Date</th>
+                  <th>Link</th>
+                </tr>
+              </thead>
+              <tbody id="db-table-body">
+              <tbody id="results-table-body">
+                <tr><td colspan="9" class="empty-row">Use filters above to load saved posts.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -170,7 +305,8 @@
     const statScore = document.getElementById('stat-score');
     const statUpvote = document.getElementById('stat-upvote');
     const resultsCount = document.getElementById('results-count');
-    const resultsGrid = document.getElementById('results-grid');
+    const resultsTable = document.getElementById('results-table');
+    const resultsTableBody = document.getElementById('results-table-body');
     const apiBaseInput = document.getElementById('api_base');
     const downloadBtn = document.getElementById('download-btn');
     const saveBtn = document.getElementById('save-btn');
@@ -182,9 +318,36 @@
     const modalErrors = document.getElementById('modal-errors');
     const modalDetail = document.getElementById('modal-detail');
 
+    const tabSearch = document.getElementById('tab-search');
+    const tabDb = document.getElementById('tab-db');
+    const viewSearch = document.getElementById('view-search');
+    const viewDb = document.getElementById('view-db');
+    const dbForm = document.getElementById('db-form');
+    const dbFeedback = document.getElementById('db-feedback');
+    const dbResultsCount = document.getElementById('db-results-count');
+    const dbResultsTable = document.getElementById('db-results-table');
+    const dbTableBody = document.getElementById('db-table-body');
+    const dbDownloadBtn = document.getElementById('db-download-btn');
+    const dbViewAllBtn = document.getElementById('db-view-all-btn');
+
     let lastPosts = [];
     let lastBrand = '';
     let apiBaseCurrent = '';
+    let dbPosts = [];
+
+    tabSearch.addEventListener('click', () => {
+      tabSearch.classList.add('active');
+      tabDb.classList.remove('active');
+      viewSearch.classList.add('active');
+      viewDb.classList.remove('active');
+    });
+
+    tabDb.addEventListener('click', () => {
+      tabDb.classList.add('active');
+      tabSearch.classList.remove('active');
+      viewDb.classList.add('active');
+      viewSearch.classList.remove('active');
+    });
 
     const showSaveModal = (result) => {
       modalSaved.textContent = result.stored ?? 0;
@@ -259,10 +422,10 @@
     };
 
     const renderResults = (posts, brand) => {
-      resultsGrid.innerHTML = '';
+      resultsTableBody.innerHTML = '';
 
       if (!posts.length) {
-        resultsGrid.innerHTML = '<div class="empty">No posts matched your filters. Try widening the time window or reducing the score threshold.</div>';
+        resultsTableBody.innerHTML = '<tr><td colspan="9" class="empty-row">No posts matched your filters. Try widening the time window or reducing the score threshold.</td></tr>';
         resultsCount.textContent = '0 posts';
         statCount.textContent = '0';
         statScore.textContent = '0';
@@ -285,31 +448,22 @@
       saveBtn.disabled = false;
 
       posts.forEach((post) => {
-        const card = document.createElement('article');
-        card.className = 'card';
-
-        const flairLabels = [];
-        if (post.is_video) flairLabels.push('Video');
-        if (post.is_self) flairLabels.push('Text');
-        if (post.spoiler) flairLabels.push('Spoiler');
-        if (post.nsfw) flairLabels.push('NSFW');
-        if (post.stickied) flairLabels.push('Stickied');
-
-        const flairHtml = flairLabels.map((label) => `<span class="chip muted">${escapeHtml(label)}</span>`).join('');
         const permalink = post.permalink || post.url || '#';
+        const row = document.createElement('tr');
 
-        card.innerHTML = `
-          <div class="card-top">
-            <div class="chip muted">r/${escapeHtml(post.subreddit || 'unknown')}</div>
-            <a class="link" href="${escapeHtml(permalink)}" target="_blank" rel="noopener noreferrer">Open thread</a>
-          </div>
-          <h3>${escapeHtml(truncate(post.title || 'Untitled', 160))}</h3>
-          <p class="meta">Score ${post.score || 0} · Comments ${post.comments || 0} · Upvote ${post.upvote_ratio ? Math.round(post.upvote_ratio * 100) : 0}% · ${formatDate(post.created_at)}</p>
-          <p class="snippet">${escapeHtml(truncate(post.text || '', 260))}</p>
-          <div class="card-tags">${flairHtml || '<span class="chip muted">Clean</span>'}</div>
+        row.innerHTML = `
+          <td><span class="chip muted">r/${escapeHtml(post.subreddit || 'unknown')}</span></td>
+          <td class="cell-title">${escapeHtml(truncate(post.title || 'Untitled', 100))}</td>
+          <td class="cell-body">${escapeHtml(truncate(post.text || post.content || '', 150))}</td>
+          <td class="cell-number">${post.score || 0}</td>
+          <td class="cell-number">${post.comments || 0}</td>
+          <td class="cell-number">${post.upvote_ratio ? Math.round(post.upvote_ratio * 100) + '%' : '0%'}</td>
+          <td class="cell-author">${escapeHtml(post.author || 'unknown')}</td>
+          <td class="cell-date">${formatDate(post.created_at)}</td>
+          <td><a class="link" href="${escapeHtml(permalink)}" target="_blank" rel="noopener noreferrer">View</a></td>
         `;
 
-        resultsGrid.appendChild(card);
+        resultsTableBody.appendChild(row);
       });
     };
 
@@ -331,6 +485,14 @@
       params.set('query', query);
       params.set('limit', formData.get('limit') || '30');
       params.set('min_upvotes', formData.get('min_upvotes') || '0');
+      const includeSubs = (formData.get('include_subs') || '').split(',').map(s => s.trim()).filter(Boolean);
+      const excludeSubs = (formData.get('exclude_subs') || '').split(',').map(s => s.trim()).filter(Boolean);
+      const sort = formData.get('sort') || 'relevance';
+      const searchScope = formData.get('search_scope') || 'title_body';
+      if (includeSubs.length) params.set('include_subreddits', includeSubs.join(','));
+      if (excludeSubs.length) params.set('exclude_subreddits', excludeSubs.join(','));
+      params.set('sort', sort);
+      params.set('search_scope', searchScope);
 
       const filter = formData.get('time_filter');
       params.set('time_filter', filter || 'week');
@@ -346,7 +508,8 @@
       }
 
       const regionOptions = Array.from(document.getElementById('regions').selectedOptions).map((opt) => opt.value);
-      const regions = regionOptions.filter((val) => val !== 'Global');
+      const hasAll = regionOptions.includes('All');
+      const regions = hasAll ? [] : regionOptions;
       if (regions.length) {
         params.set('regions', regions.join(','));
       }
@@ -355,7 +518,7 @@
 
       setStatus('Requesting...', 'live');
       feedback.textContent = 'Fetching posts from the API...';
-      resultsGrid.classList.add('loading');
+      resultsTable.classList.add('loading');
 
       try {
         const response = await fetch(url);
@@ -374,7 +537,7 @@
         renderResults([], '');
         setStatus('Error', 'error');
       } finally {
-        resultsGrid.classList.remove('loading');
+        resultsTable.classList.remove('loading');
       }
     });
 
@@ -442,6 +605,122 @@
         saveBtn.disabled = false;
       }
     });
+
+    dbForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      dbFeedback.textContent = '';
+      const formData = new FormData(dbForm);
+      const params = new URLSearchParams();
+      const brand = formData.get('db-brand');
+      const subreddit = formData.get('db-subreddit');
+      const limit = formData.get('db-limit') || '50';
+      const minScore = formData.get('db-min-score') || '0';
+
+      params.set('limit', limit);
+      params.set('min_score', minScore);
+      if (brand) params.set('search_brand', brand);
+      if (subreddit) params.set('subreddit', subreddit);
+
+      await loadDbPosts(params);
+    });
+
+    dbViewAllBtn.addEventListener('click', async () => {
+      dbFeedback.textContent = '';
+      const params = new URLSearchParams();
+      params.set('limit', '200'); // Max limit for viewing all
+      params.set('min_score', '0');
+      await loadDbPosts(params);
+    });
+
+    const loadDbPosts = async (params) => {
+      const url = `${apiBaseCurrent}/reddit/posts?${params.toString()}`;
+      dbFeedback.textContent = 'Loading posts from database...';
+      dbResultsTable.classList.add('loading');
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+        const data = await response.json();
+        dbPosts = data.posts || [];
+        renderDbTable(dbPosts);
+        dbFeedback.textContent = `Loaded ${data.total || 0} posts from database.`;
+      } catch (err) {
+        console.error(err);
+        dbFeedback.textContent = `Error: ${err.message}`;
+        renderDbTable([]);
+      } finally {
+        dbResultsTable.classList.remove('loading');
+      }
+    };
+
+    const renderDbTable = (posts) => {
+      dbTableBody.innerHTML = '';
+      if (!posts.length) {
+        dbTableBody.innerHTML = '<tr><td colspan="9" class="empty-row">No saved posts match your filters.</td></tr>';
+        dbResultsCount.textContent = '0 posts';
+        dbDownloadBtn.disabled = true;
+        return;
+      }
+
+      dbResultsCount.textContent = `${posts.length} posts`;
+      dbDownloadBtn.disabled = false;
+
+      posts.forEach((post) => {
+        const metrics = post.metrics || {};
+        const permalink = post.permalink || post.url || '#';
+        const row = document.createElement('tr');
+
+        row.innerHTML = `
+          <td><span class="chip muted">r/${escapeHtml(post.subreddit || 'unknown')}</span></td>
+          <td class="cell-title">${escapeHtml(truncate(post.title || 'Untitled', 100))}</td>
+          <td class="cell-body">${escapeHtml(truncate(post.content || '', 150))}</td>
+          <td class="cell-number">${metrics.score || 0}</td>
+          <td class="cell-number">${metrics.comments || 0}</td>
+          <td class="cell-number">${metrics.upvote_ratio ? Math.round(metrics.upvote_ratio * 100) + '%' : '0%'}</td>
+          <td class="cell-author">${escapeHtml(post.author || 'unknown')}</td>
+          <td class="cell-date">${formatDate(post.created_at)}</td>
+          <td><a class="link" href="${escapeHtml(permalink)}" target="_blank" rel="noopener noreferrer">View</a></td>
+        `;
+
+        dbTableBody.appendChild(row);
+      });
+    };
+
+    const downloadDbCsv = () => {
+      if (!dbPosts.length) return;
+      const headers = [
+        'id','title','content','subreddit','author','url','permalink','score','comments','upvote_ratio','created_at','scraped_at'
+      ];
+      const rows = dbPosts.map(p => {
+        const m = p.metrics || {};
+        return [
+          p.id || '',
+          (p.title || '').replace(/"/g, '""'),
+          (p.content || '').replace(/"/g, '""'),
+          p.subreddit || '',
+          p.author || '',
+          p.url || '',
+          p.permalink || '',
+          m.score ?? '',
+          m.comments ?? '',
+          m.upvote_ratio ?? '',
+          p.created_at || '',
+          p.scraped_at || ''
+        ];
+      });
+      const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'reddit-db-results.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    dbDownloadBtn.addEventListener('click', downloadDbCsv);
   </script>
 </body>
 </html>

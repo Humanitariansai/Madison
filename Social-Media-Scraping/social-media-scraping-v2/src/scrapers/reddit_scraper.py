@@ -29,7 +29,7 @@ class RedditScraper:
     
     def _get_region_subreddits(self, regions: List[str]) -> str:
         """Get subreddit string for specified regions"""
-        if not regions or "Global" in regions:
+        if not regions or "All" in regions or "Global" in regions:
             return "all"
         
         selected_subs = []
@@ -47,7 +47,11 @@ class RedditScraper:
         start_date: datetime = None,
         end_date: datetime = None,
         min_upvotes: int = 0,
-        regions: List[str] = None
+        regions: List[str] = None,
+        include_subreddits: List[str] = None,
+        exclude_subreddits: List[str] = None,
+        sort: str = "relevance",
+        search_scope: str = "title_body",
     ) -> List[Dict]:
         rate_limiter.wait_if_needed('reddit')  # Rate limiting
         
@@ -63,10 +67,29 @@ class RedditScraper:
             region_subreddits = self._get_region_subreddits(regions) if regions else "all"
             
             filtered_posts = []
-            for submission in self.reddit.subreddit(region_subreddits).search(query, time_filter=search_time_filter, limit=limit*2):
+            for submission in self.reddit.subreddit(region_subreddits).search(
+                query,
+                time_filter=search_time_filter,
+                limit=limit*2,
+                sort=sort if sort in ["relevance", "new", "top", "comments"] else None,
+            ):
                 # Apply minimum upvotes filter
                 if submission.score < min_upvotes:
                     continue
+
+                # Subreddit include/exclude filters
+                sub_name = submission.subreddit.display_name.lower()
+                if include_subreddits:
+                    if sub_name not in {s.lower() for s in include_subreddits}:
+                        continue
+                if exclude_subreddits:
+                    if sub_name in {s.lower() for s in exclude_subreddits}:
+                        continue
+
+                # Optional title-only scope
+                if search_scope == "title":
+                    if query.lower() not in (submission.title or "").lower():
+                        continue
                 
                 # Apply custom date range filter if specified
                 if time_filter == "custom" and start_date and end_date:
@@ -79,6 +102,15 @@ class RedditScraper:
                 if len(filtered_posts) >= limit:
                     break
             
+            # Apply local sorting if requested (score/comments/new) to stabilize ordering
+            if sort in ["score", "comments", "new"]:
+                if sort == "score":
+                    filtered_posts.sort(key=lambda s: s.score, reverse=True)
+                elif sort == "comments":
+                    filtered_posts.sort(key=lambda s: s.num_comments, reverse=True)
+                elif sort == "new":
+                    filtered_posts.sort(key=lambda s: s.created_utc, reverse=True)
+
             # Process filtered posts
             for submission in filtered_posts[:limit]:
                 posts.append({

@@ -71,7 +71,23 @@ def search_reddit(
     min_upvotes: int = Query(0, ge=0, description="Minimum score threshold"),
     regions: Optional[str] = Query(
         None,
-        description="Comma-separated regions (Global, North America, Europe, Asia, Oceania, South America, Africa)",
+        description="Comma-separated regions (All, North America, Europe, Asia, Oceania, South America, Africa)",
+    ),
+    include_subreddits: Optional[str] = Query(
+        None, description="Comma-separated subreddits to include (e.g., askreddit,technology)"
+    ),
+    exclude_subreddits: Optional[str] = Query(
+        None, description="Comma-separated subreddits to exclude (e.g., politics,worldnews)"
+    ),
+    sort: str = Query(
+        "relevance",
+        regex="^(relevance|score|comments|new)$",
+        description="Sort results by relevance (API default), score, comments, or new",
+    ),
+    search_scope: str = Query(
+        "title_body",
+        regex="^(title|title_body)$",
+        description="Match query in title only or title+body (default)",
     ),
 ):
     """Search Reddit posts via RedditScraper with optional filters."""
@@ -82,6 +98,13 @@ def search_reddit(
     if regions:
         region_list = [region.strip() for region in regions.split(",") if region.strip()]
 
+    include_list = None
+    exclude_list = None
+    if include_subreddits:
+        include_list = [s.strip() for s in include_subreddits.split(",") if s.strip()]
+    if exclude_subreddits:
+        exclude_list = [s.strip() for s in exclude_subreddits.split(",") if s.strip()]
+
     try:
         posts = reddit_scraper.search_subreddits(
             query=query,
@@ -91,10 +114,41 @@ def search_reddit(
             end_date=end_date,
             min_upvotes=min_upvotes,
             regions=region_list,
+            include_subreddits=include_list,
+            exclude_subreddits=exclude_list,
+            sort=sort,
+            search_scope=search_scope,
         )
         return {"total": len(posts), "posts": posts}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Reddit search failed: {str(e)}")
+
+
+@app.get("/reddit/posts")
+def get_reddit_posts(
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of posts to return"),
+    search_brand: Optional[str] = Query(None, description="Filter by brand/keyword used during scraping"),
+    subreddit: Optional[str] = Query(None, description="Filter by subreddit name"),
+    min_score: int = Query(0, ge=0, description="Minimum score threshold"),
+):
+    """Retrieve saved Reddit posts from database with optional filters."""
+    try:
+        query = {"platform": "reddit"}
+        
+        if search_brand:
+            query["search_brand"] = {"$regex": search_brand, "$options": "i"}
+        
+        if subreddit:
+            query["subreddit"] = {"$regex": subreddit, "$options": "i"}
+        
+        if min_score > 0:
+            query["metrics.score"] = {"$gte": min_score}
+        
+        posts = list(store.db.posts.find(query, {"_id": 0}).sort("scraped_at", -1).limit(limit))
+        
+        return {"total": len(posts), "posts": posts}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve posts: {str(e)}")
 
 
 @app.post("/reddit/save")
