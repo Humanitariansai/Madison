@@ -39,7 +39,8 @@ class IntegratedBrandAuditor:
 
             # Convert to Grayscale for SIFT
             img_cv = np.array(pil_img)
-            if len(img_cv.shape) == 3: img_cv = cv2.cvtColor(img_cv, cv2.COLOR_RGB2GRAY)
+            if len(img_cv.shape) == 3:
+                img_cv = cv2.cvtColor(img_cv, cv2.COLOR_RGB2GRAY)
 
             kp, des = self.sift.detectAndCompute(img_cv, None)
 
@@ -62,7 +63,8 @@ class IntegratedBrandAuditor:
         found_instances = []
 
         kp_page, des_page = self.sift.detectAndCompute(page_cv_gray, None)
-        if des_page is None: return []
+        if des_page is None:
+            return []
 
         flann = cv2.FlannBasedMatcher(dict(algorithm=1, trees=5), dict(checks=50))
 
@@ -88,7 +90,8 @@ class IntegratedBrandAuditor:
                     h_new = int(max(dst[:, 0, 1])) - y
 
                     # Sanity Checks (Size & Ratio)
-                    if w_new < 30 or h_new < 30: continue
+                    if w_new < 30 or h_new < 30:
+                        continue
 
                     detected_ratio = w_new / h_new
                     ref_ratio = variant['aspect_ratio']
@@ -107,7 +110,8 @@ class IntegratedBrandAuditor:
 
     def _deduplicate_matches(self, instances):
         """If multiple variants match the same spot, pick the best one."""
-        if not instances: return []
+        if not instances:
+            return []
         instances.sort(key=lambda x: x['match_score'], reverse=True)
         unique = []
         for cand in instances:
@@ -119,7 +123,8 @@ class IntegratedBrandAuditor:
                 if abs(cx - ex) < 50 and abs(cy - ey) < 50:
                     is_overlap = True
                     break
-            if not is_overlap: unique.append(cand)
+            if not is_overlap:
+                unique.append(cand)
         return unique
 
     def _check_logo_compliance(self, crop, variant_data):
@@ -158,8 +163,10 @@ class IntegratedBrandAuditor:
         page_area = clean_page.shape[0] * clean_page.shape[1]
         for c in contours:
             x, y, w, h = cv2.boundingRect(c)
-            if w < 100 or h < 100: continue
-            if (w * h) > (page_area * 0.9): continue
+            if w < 100 or h < 100:
+                continue
+            if (w * h) > (page_area * 0.9):
+                continue
             found_imgs.append([x, y, w, h])
         return found_imgs
 
@@ -177,7 +184,8 @@ class IntegratedBrandAuditor:
     # PHASE 3: TEXT (Voice)
     # ==================================================
     def _check_text_voice(self, text):
-        if len(text.split()) < 10: return None, None
+        if len(text.split()) < 10:
+            return None, None
         labels = self.bible['brand_voice_attributes'] + ["spammy", "aggressive"]
         res = self.nlp_pipe(text, labels)
         top = res['labels'][0]
@@ -246,8 +254,10 @@ class IntegratedBrandAuditor:
 
     def audit_pdf(self, pdf_path):
         print(f"Auditing: {pdf_path}...")
-        try: pages = convert_from_path(pdf_path)
-        except Exception as e: return [f"Error: {e}"]
+        try:
+            pages = convert_from_path(pdf_path)
+        except Exception as e:
+            return [f"Error: {e}"]
 
         report = []
 
@@ -259,20 +269,4 @@ class IntegratedBrandAuditor:
 
         return report
 
-if __name__ == "__main__":
-    
-    # 1. Initialize
-    # pass in your generated bible and the list of classified assets
-    auditor = IntegratedBrandAuditor(brand_kit, assets_for_learning)
 
-    # 2. Run Audit on PDF
-    pdf_path = "Humanitarians AI LANDING.pdf"
-    results = auditor.audit_pdf(pdf_path)
-
-    # 3. Visualize
-    # Using the existing visualization function we wrote earlier
-    if isinstance(results[0], dict):
-        # Re-using the logic, but adding support for the new 'variant' key in label
-        visualize_audit_results(pdf_path, results) # Use the simpler visualizer from before
-    else:
-        print(results)

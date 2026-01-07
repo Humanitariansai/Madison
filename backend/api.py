@@ -2,17 +2,38 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 from pdf2image import convert_from_bytes
 from PIL import Image
 import uuid
-import os
 import shutil
 from pathlib import Path
+import json
+import datetime
 
-from asset_classifier import AssetClassifier
-from brand_guideline_generator import BrandGuidelineGenerator
-from brand_auditor import IntegratedBrandAuditor # Ensure this is imported
+from .asset_classifier import AssetClassifier
+from .brand_guideline_generator import BrandGuidelineGenerator
+from .brand_guideline_extractor import BrandGuidelineExtractor
+from .brand_auditor import IntegratedBrandAuditor
+
+class InspectionResult(BaseModel):
+    id: str
+    pageNumber: int
+    type: str # 'COLOR', 'FONT', 'LOGO', etc.
+    message: str
+    level: str # 'CRITICAL', 'MEDIUM', 'PASS'
+    status: str # 'FAIL', 'PASS'
+    coordinates: dict # {x, y, width, height}
+
+class AuditResponse(BaseModel):
+    projectId: str
+    title: str
+    violations: List[InspectionResult]
+    score: int
+    status: str # 'COMPLIANT', 'CRITICAL', 'ACTION_REQUIRED' 
+
+# Initialize Extractor
+guideline_extractor = BrandGuidelineExtractor()
 
 app = FastAPI(title="BrandGuardAI")
 
@@ -29,7 +50,6 @@ UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-import json
 
 # Persistence Setup
 DATA_DIR = Path("data")
@@ -67,48 +87,7 @@ def save_store():
 load_store()
 
 classifier = AssetClassifier()
-
-
-
-class InspectionResult(BaseModel):
-    id: str
-    pageNumber: int
-    type: str
-    message: str
-    level: str  # CRITICAL, MEDIUM, LOW, PASS
-    status: str # PASS, FAIL
-    coordinates: dict  # {x, y, width, height}
-
-
-class AuditResponse(BaseModel):
-    projectId: str
-    title: str
-    violations: List[InspectionResult]
-    score: int
-    status: str  # COMPLIANT, CRITICAL, ACTION_REQUIRED
-
-
-class BrandAssets(BaseModel):
-    id: str
-    filename: str
-    category: str
-    path: str # Local path to file
-    url: Optional[str] = None # URL if served
-
-
-class Logo(BaseModel):
-    id: str
-    name: str
-
-
-class BrandKitResponse(BaseModel):
-    id: str
-    title: str
-    date: str
-    assets: List[BrandAssets]
-    logos: List[str]
-    colors: List[str]
-
+# classifier (loaded globally or on demand)
 
 @app.post("/brandkit")
 async def create_brandkit(
@@ -124,18 +103,34 @@ async def create_brandkit(
 
     print("Phase 1: Learning from Assets...")
     
+    extracted_rules = None # [NEW] to hold PDF data
+
     for f in files:
         # Save file to disk
         file_path = kit_dir / f.filename
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(f.file, buffer)
         
-        # Reset file pointer for classification if needed, but we saved it already
-        # Classification often needs a path or bytes. 
-        # AssetClassifier.predict_type takes image_source (path or url or PIL).
-        # Let's pass the path string.
-        
-        category, confidence = classifier.predict_type(str(file_path))
+        # [NEW] Check for Guidelines PDF
+        if f.filename.lower().endswith(".pdf"):
+            print(f"Detected potential Brand Guidelines: {f.filename}")
+            try:
+                # Attempt to extract rules
+                print(">>> Running Brand Guideline Extractor...")
+                extracted_rules = guideline_extractor.extract_guidelines(str(file_path))
+                print(">>> Extraction Complete.")
+            except Exception as e:
+                print(f"Failed to extract guidelines from PDF: {e}")
+            
+            # We also treat it as an asset? 
+            # Or skip classification for PDF?
+            # Let's say we assume a PDF is Guidelines and NOT an image asset for classification
+            # unless we convert it. For now, let's categorize it explicitly.
+            category = "GUIDELINES"
+            confidence = 1.0
+        else:
+            # Standard Classification
+            category, confidence = classifier.predict_type(str(file_path))
 
         print(f"Result: {category} ({confidence:.2%})")
         print("-" * 30)
@@ -144,13 +139,10 @@ async def create_brandkit(
         # We need to reload the image for the generator if it expects PIL images
         try:
             # Only attempt to open as image if it's likely an image
-            if category in ["LOGO", "IMAGERY", "TEMPLATE"]: # Basic check, or just try/except
+            if category in ["LOGO", "IMAGERY", "TEMPLATE"]: 
                 img = Image.open(file_path).convert("RGB")
                 assets_for_learning.append({"image": img, "type": category})
             else:
-                 # It might be TYPOGRAPHY or other things that are PDF? 
-                 # If it's a PDF, Image.open might fail or just read first page if poppler is around, 
-                 # but here we just catch exception.
                  pass
         except Exception as e:
             print(f"Skipping {f.filename} for guideline generation (not a readable image): {e}")
@@ -169,8 +161,8 @@ async def create_brandkit(
     # ==========================================
     generator = BrandGuidelineGenerator()
 
-    # Since we don't have real assets loaded in this text box, let's create a Mock Bible
-    brand_kit = generator.generate_brand_kit(assets_for_learning)
+    # Pass the extracted_rules to the generator [NEW]
+    brand_kit = generator.generate_brand_kit(assets_for_learning, extracted_rules=extracted_rules)
 
     print("brand_kit \n", brand_kit)
     if not hasattr(brand_kit, "color_tolerance"):
@@ -189,9 +181,8 @@ async def create_brandkit(
     # Merge our stored assets into the brand_kit dict
     brand_kit["id"] = id
     brand_kit["title"] = title
-    brand_kit["assets"] = stored_assets # Overwriting or adding to what generator returned
+    brand_kit["assets"] = stored_assets 
     
-    import datetime
     brand_kit["date"] = datetime.datetime.now().strftime("%b %d, %Y")
     
     brand_kit_store[id] = brand_kit
@@ -302,7 +293,6 @@ async def audit_project(
         overall_status = "COMPLIANT"
 
     # === PERSISTENCE LOGIC START ===
-    import datetime
     project_data = {
         "id": id,
         "title": title,

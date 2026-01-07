@@ -6,11 +6,14 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi[standard]>=0.125.0",
+    "google-generativeai>=0.8.6",
+    "litellm>=1.80.12",
     "opencv-python>=4.12.0.88",
     "pdf2image>=1.17.0",
     "pillow>=12.0.0",
     "pytesseract>=0.3.13",
     "python-multipart>=0.0.21",
+    "ruff>=0.14.10",
     "scikit-learn>=1.7.2",
     "torch>=2.9.1",
     "transformers>=4.57.3",

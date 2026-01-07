@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Plus, Upload, Trash2, Edit2, Download,
   Type, Palette, Image as ImageIcon, LayoutGrid, FileText,
-  ArrowLeft
+  ArrowLeft, ShieldCheck, AlertTriangle
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,9 +38,26 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
             <h1 className="text-2xl font-bold text-slate-900">{brandKit.title}</h1>
             <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">Active</Badge>
           </div>
-          <p className="text-slate-500 text-sm">
+          <p className="text-slate-500 text-sm mb-4">
             Gold standard definition. Parsed from {brandKit.files.length} source files.
           </p>
+          
+          {/* Brand Voice Chips */}
+          {brandKit.brand_voice_attributes && (
+            <div className="flex flex-wrap gap-2">
+                {brandKit.brand_voice_attributes.map(v => (
+                    <Badge key={v} variant="secondary" className="bg-slate-100 text-slate-600 font-normal">
+                        {v}
+                    </Badge>
+                ))}
+                
+                {brandKit.forbidden_keywords && brandKit.forbidden_keywords.length > 0 && (
+                   <span className="text-xs text-red-400 flex items-center ml-2 border-l pl-3">
+                     Avoid: {brandKit.forbidden_keywords.join(", ")}
+                   </span>
+                )}
+            </div>
+          )}
         </div>
         <div className="flex gap-3">
           <Button variant="outline"><Edit2 size={16} className="mr-2" /> Edit Rules</Button>
@@ -67,7 +84,49 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
 
             <TabsContent value="logos" className="flex-1 overflow-hidden mt-0 border-t border-slate-100">
               <ScrollArea className="h-full w-full">
-                <div className="p-8 max-w-7xl mx-auto">
+                <div className="p-8 max-w-7xl mx-auto space-y-8">
+                
+                  {/* LOGO RULES SECTION */}
+                  {brandKit.logo_rules && brandKit.logo_rules.length > 0 && (
+                    <div className="grid md:grid-cols-2 gap-4">
+                        {/* DO Rules */}
+                        <Card className="border-green-100 bg-green-50/50">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-bold text-green-800 flex items-center gap-2">
+                                    <ShieldCheck size={16} /> DO
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <ul className="space-y-2">
+                                    {brandKit.logo_rules.filter(r => r.type === 'DO').map((r, i) => (
+                                        <li key={i} className="text-sm text-green-900 flex items-start gap-2">
+                                            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"/> {r.rule}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </CardContent>
+                        </Card>
+                        
+                        {/* DON'T Rules */}
+                        <Card className="border-red-100 bg-red-50/50">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-bold text-red-800 flex items-center gap-2">
+                                    <AlertTriangle size={16} /> DON'T
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <ul className="space-y-2">
+                                    {brandKit.logo_rules.filter(r => r.type === 'DONT').map((r, i) => (
+                                        <li key={i} className="text-sm text-red-900 flex items-start gap-2">
+                                            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-red-500 shrink-0"/> {r.rule}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </CardContent>
+                        </Card>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {/* Upload Card */}
                     <button className="border-2 border-dashed border-slate-300 rounded-xl h-64 flex flex-col items-center justify-center text-slate-400 hover:border-primary hover:bg-primary/5 hover:text-primary transition-all">
@@ -102,19 +161,41 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
             {/* --- TAB: COLORS --- */}
             <TabsContent value="colors">
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {brandKit.colors && brandKit.colors.map((color, idx) => (
+                {/* Use Rich Colors if available, else fall back to basic colors */}
+                {(brandKit.rich_colors && brandKit.rich_colors.length > 0 ? brandKit.rich_colors : brandKit.colors)?.map((color, idx) => (
                   <div key={idx} className="group cursor-pointer">
                     <div
-                      className="h-32 rounded-t-xl shadow-inner relative flex items-center justify-center"
+                      className="h-32 rounded-t-xl shadow-inner relative flex items-center justify-center border-b"
                       style={{ backgroundColor: color.hex }}
                     >
+                      {/* Copy Hex on Hover */}
                       <span className="opacity-0 group-hover:opacity-100 bg-white/90 px-2 py-1 rounded text-xs font-mono font-bold shadow-sm transition-opacity">
                         {color.hex}
                       </span>
                     </div>
-                    <div className="bg-white border border-t-0 p-3 rounded-b-xl shadow-sm">
-                      <p className="font-semibold text-slate-800 text-sm">{color.name}</p>
-                      <p className="text-xs text-slate-500 capitalize">{color.type}</p>
+                    <div className="bg-white border border-t-0 p-3 rounded-b-xl shadow-sm space-y-1">
+                      <div className="flex justify-between items-start">
+                        <p className="font-semibold text-slate-800 text-sm truncate" title={color.name}>{color.name}</p>
+                        {/* Show Usage Tag if available */}
+                        {'usage' in color && color.usage && (
+                          <span className="text-[10px] uppercase tracking-wider bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
+                            {color.usage}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Rich Data Details */}
+                      {'cmyk' in color && (
+                         <div className="text-[10px] text-slate-400 font-mono space-y-0.5 mt-2">
+                           {color.rgb && <div className="flex justify-between"><span>RGB</span> <span>{color.rgb}</span></div>}
+                           {color.cmyk && <div className="flex justify-between"><span>CMYK</span> <span>{color.cmyk}</span></div>}
+                         </div>
+                      )}
+                      
+                      {/* Fallback for basic colors */}
+                      {!('cmyk' in color) && (
+                         <p className="text-xs text-slate-500 capitalize">{color.type}</p>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -139,7 +220,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
                       <div className="flex gap-4 items-center">
                         <Badge variant="secondary" className="text-lg px-3 py-1">{font.family}</Badge>
                         <div className="text-sm text-slate-500">
-                          Usage: <span className="font-medium text-slate-700">{font.usage}</span>
+                          Usage: <span className="font-medium text-slate-700">{font.use_case || font.usage || 'Primary'}</span>
                         </div>
                       </div>
                     </div>

@@ -55,7 +55,14 @@ export default function App() {
                title: data.title,
                date: data.date,
                colors: data.colors || [],
-               typography: [], // Missing in backend?
+               
+               // Map Rich Data
+               rich_colors: data.rich_colors || [],
+               typography: data.typography || [],
+               logo_rules: data.logo_rules || [],
+               forbidden_keywords: data.forbidden_keywords || [],
+               brand_voice_attributes: data.brand_voice_attributes || [],
+
                imagery: [],
                files: uploadedFiles,
                logos: (data.assets || [])
@@ -278,7 +285,14 @@ export default function App() {
       title: data.title,
       date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       colors: data.colors || [],
-      typography: [], // Generator currently doesn't populate this fully?
+      
+      // Map Rich Data
+      rich_colors: data.rich_colors || [],
+      typography: data.typography || [],
+      logo_rules: data.logo_rules || [],
+      forbidden_keywords: data.forbidden_keywords || [],
+      brand_voice_attributes: data.brand_voice_attributes || [],
+
       imagery: [],
       files: newUploadedFiles,
       logos: data.assets

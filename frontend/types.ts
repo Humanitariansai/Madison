@@ -38,13 +38,44 @@ export interface Project {
 }
 
 
+export interface BrandColor {
+  name: string;
+  hex: string;
+  rgb?: string;
+  cmyk?: string;
+  usage?: string;
+  type?: string;
+  text_color_rule?: string | null;
+}
+
+export interface BrandTypography {
+  family: string;
+  weights: string[];
+  use_case?: string;
+  usage?: string; // fallback
+}
+
+export interface BrandLogoRule {
+  rule: string;
+  type: 'DO' | 'DONT';
+}
+
 export interface BrandKit {
   id: string;
   title: string;
   date: string;
   files: UploadedFile[];
+
+  // Basic inferred colors (backward compatibility)
   colors?: { name: string; hex: string; type: string }[];
+
+  // Rich Data from Guidelines
+  rich_colors?: BrandColor[];
+  typography?: BrandTypography[];
+  logo_rules?: BrandLogoRule[];
+  forbidden_keywords?: string[];
+  brand_voice_attributes?: string[];
+
   logos?: { id: string | number; name: string; url: string; variant: string }[];
-  typography?: { family: string; weights: string[]; usage: string }[];
   imagery?: {}[];
 }
