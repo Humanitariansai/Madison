@@ -34,12 +34,14 @@ export const ProjectInspectionView: React.FC<Props> = ({ project, onBack }) => {
         </div>
         
         {/* Reusing existing FileSidebar but mapping project files */}
-        <FileSidebar 
-            files={project.files}
-            activeFileId={activeFileId}
-            onSelectFile={setActiveFileId}
-            onUploadClick={() => alert("Add file to project feature coming soon!")}
-        />
+        <div className="flex-1 min-h-0 w-full">
+            <FileSidebar 
+                files={project.files}
+                activeFileId={activeFileId}
+                onSelectFile={setActiveFileId}
+                onUploadClick={() => alert("Add file to project feature coming soon!")}
+            />
+        </div>
       </div>
 
       {/* 2. Center Stage: PDF Viewer */}
