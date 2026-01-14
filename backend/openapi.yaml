@@ -1,0 +1,1086 @@
+openapi: 3.0.3
+info:
+  title: Survey Analysis API
+  description: |
+    Backend API for Humanitarians AI Survey Analysis Platform
+    
+    ## Features
+    - User authentication with JWT
+    - CSV file upload and validation
+    - Sentiment analysis (VADER and LLM)
+    - Theme extraction (YAKE, LDA, NMF)
+    - Large file processing (1M+ rows)
+    - Async background processing
+    - History tracking
+    
+    ## Authentication
+    All protected endpoints require a Bearer token in the Authorization header.
+    Get your token by logging in at `/api/auth/login`.
+    
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@humanitarians.ai
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: https://api.humanitarians.ai
+    description: Production server
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Files
+    description: File upload and management
+  - name: Analysis
+    description: Survey data analysis (sentiment, themes)
+  - name: History
+    description: File and report history
+  - name: Async
+    description: Asynchronous processing for large files
+
+paths:
+  /:
+    get:
+      tags:
+        - Health
+      summary: Root endpoint
+      description: Returns API information
+      operationId: root
+      responses:
+        '200':
+          description: API information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Survey Analysis API
+                  version:
+                    type: string
+                    example: "1.0.0"
+              example:
+                message: Survey Analysis API
+                version: "1.0.0"
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check if the API is running
+      operationId: healthCheck
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+              example:
+                status: healthy
+
+  /api/auth/signup:
+    post:
+      tags:
+        - Authentication
+      summary: Create new user account
+      description: Register a new user account
+      operationId: signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+            examples:
+              example1:
+                summary: New user registration
+                value:
+                  username: johndoe
+                  email: john.doe@example.com
+                  password: SecurePassword123!
+      responses:
+        '200':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                id: 1
+                username: johndoe
+                email: john.doe@example.com
+                created_at: "2024-01-15T10:30:00Z"
+        '400':
+          description: Bad request (username/email already exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Username already exists
+
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and get JWT token
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+            examples:
+              example1:
+                summary: User login
+                value:
+                  username: johndoe
+                  password: SecurePassword123!
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                token_type: bearer
+                user:
+                  id: 1
+                  username: johndoe
+                  email: john.doe@example.com
+                  created_at: "2024-01-15T10:30:00Z"
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Invalid username or password
+
+  /api/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user
+      description: Get information about the currently authenticated user
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                id: 1
+                username: johndoe
+                email: john.doe@example.com
+                created_at: "2024-01-15T10:30:00Z"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Could not validate credentials
+
+  /api/files/upload:
+    post:
+      tags:
+        - Files
+      summary: Upload CSV file
+      description: |
+        Upload a CSV file for analysis. The system automatically:
+        - Detects text and time columns
+        - Validates file format
+        - Handles large files (1M+ rows) with chunked processing
+      operationId: uploadFile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV file to upload
+            encoding:
+              file:
+                contentType: text/csv, application/vnd.ms-excel
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+              example:
+                file_id: 123
+                filename: survey_responses.csv
+                rows_count: 50000
+                columns:
+                  - id
+                  - timestamp
+                  - feedback
+                  - rating
+                text_col: feedback
+                time_col: timestamp
+                issues: []
+        '400':
+          description: Invalid file format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Invalid CSV file format
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/analysis/sentiment:
+    post:
+      tags:
+        - Analysis
+      summary: Analyze sentiment
+      description: |
+        Perform sentiment analysis on uploaded file.
+        
+        **Options:**
+        - `use_ai: false` - Uses VADER (fast, recommended for large files)
+        - `use_ai: true` - Uses LLM (slower, more accurate, expensive)
+        
+        **Large Files:**
+        - Automatically uses chunked processing for files > 100k rows
+        - For 1M+ rows, consider using async endpoint
+      operationId: analyzeSentiment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisRequest'
+            examples:
+              basic:
+                summary: Basic sentiment analysis
+                value:
+                  file_id: 123
+                  use_ai: false
+              withDateRange:
+                summary: Sentiment analysis with date filter
+                value:
+                  file_id: 123
+                  use_ai: false
+                  date_start: "2024-01-01"
+                  date_end: "2024-01-31"
+              withAI:
+                summary: LLM-based sentiment analysis
+                value:
+                  file_id: 123
+                  use_ai: true
+      responses:
+        '200':
+          description: Sentiment analysis results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SentimentResponse'
+              example:
+                sentiment_distribution:
+                  positive: 25000
+                  negative: 15000
+                  neutral: 10000
+                processed_data:
+                  total_rows: 50000
+                  positive: 25000
+                  negative: 15000
+                  neutral: 10000
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: File not found
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/analysis/themes:
+    post:
+      tags:
+        - Analysis
+      summary: Extract themes
+      description: |
+        Extract themes and key topics from survey responses.
+        
+        **Methods:**
+        - YAKE keyword extraction (default, fast)
+        - LDA topic modeling (better quality, slower)
+        - NMF topic modeling (alternative to LDA)
+        
+        **Large Files:**
+        - Automatically samples for topic modeling on 1M+ rows
+        - Uses chunked processing for YAKE
+      operationId: extractThemes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisRequest'
+            examples:
+              basic:
+                summary: Basic theme extraction
+                value:
+                  file_id: 123
+                  use_ai: false
+                  top_k: 20
+              withDateRange:
+                summary: Theme extraction with date filter
+                value:
+                  file_id: 123
+                  use_ai: false
+                  top_k: 30
+                  date_start: "2024-01-01"
+                  date_end: "2024-01-31"
+      responses:
+        '200':
+          description: Theme extraction results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeResponse'
+              example:
+                themes:
+                  - keyphrase: customer service
+                    weight: 0.85
+                    frequency: 1250
+                  - keyphrase: product quality
+                    weight: 0.72
+                    frequency: 980
+                  - keyphrase: delivery time
+                    weight: 0.65
+                    frequency: 750
+                priorities:
+                  - theme: customer service
+                    priority_score: 0.92
+                    impact: high
+                    effort: medium
+                  - theme: product quality
+                    priority_score: 0.78
+                    impact: high
+                    effort: high
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/analysis/async/sentiment:
+    post:
+      tags:
+        - Async
+      summary: Start async sentiment analysis
+      description: |
+        Start asynchronous sentiment analysis for large files (1M+ rows).
+        
+        **Requirements:**
+        - Redis must be running
+        - Celery worker must be started
+        
+        **Usage:**
+        1. Call this endpoint to start processing
+        2. Get `task_id` from response
+        3. Poll `/api/analysis/async/status/{task_id}` for progress
+        4. Get results when status is "SUCCESS"
+      operationId: startAsyncSentiment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisRequest'
+            example:
+              file_id: 123
+              use_ai: false
+      responses:
+        '200':
+          description: Async task started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                    description: Task ID for status polling
+                    example: "abc123-def456-ghi789"
+                  status:
+                    type: string
+                    example: started
+              example:
+                task_id: "abc123-def456-ghi789"
+                status: started
+        '503':
+          description: Async processing not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Async processing requires Celery. Install with: pip install celery redis
+
+  /api/analysis/async/status/{task_id}:
+    get:
+      tags:
+        - Async
+      summary: Get async task status
+      description: |
+        Get the status and progress of an async processing task.
+        
+        **Status Values:**
+        - `PENDING` - Task is queued
+        - `PROCESSING` - Task is running
+        - `SUCCESS` - Task completed (results in `result` field)
+        - `FAILURE` - Task failed (error in `error` field)
+      operationId: getAsyncStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: Task ID from async endpoint
+          schema:
+            type: string
+          example: "abc123-def456-ghi789"
+      responses:
+        '200':
+          description: Task status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncTaskStatus'
+              examples:
+                processing:
+                  summary: Task in progress
+                  value:
+                    task_id: "abc123-def456-ghi789"
+                    status: PROCESSING
+                    progress: 45
+                    message: Processing chunk 45/100
+                success:
+                  summary: Task completed
+                  value:
+                    task_id: "abc123-def456-ghi789"
+                    status: SUCCESS
+                    progress: 100
+                    message: Completed
+                    result:
+                      sentiment_distribution:
+                        positive: 500000
+                        negative: 300000
+                        neutral: 200000
+                      total_rows_processed: 1000000
+                failure:
+                  summary: Task failed
+                  value:
+                    task_id: "abc123-def456-ghi789"
+                    status: FAILURE
+                    error: "File not found"
+        '503':
+          description: Async processing not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/history/files:
+    get:
+      tags:
+        - History
+      summary: Get file upload history
+      description: |
+        Get list of all uploaded files with their details and associated reports.
+        
+        Returns files sorted by upload date (newest first).
+      operationId: getFilesHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of files to return
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+          example: 100
+      responses:
+        '200':
+          description: List of uploaded files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileHistoryItem'
+              example:
+                - id: 123
+                  filename: survey_responses.csv
+                  rows_count: 50000
+                  uploaded_at: "2024-01-15T10:30:00Z"
+                  file_hash: "a1b2c3d4e5f6..."
+                  file_path: "/data/uploads/upload_1_a1b2c3d4.csv"
+                  reports:
+                    - id: 456
+                      report_name: sentiment_report_20240115.pdf
+                      report_type: pdf
+                      file_size: 1024000
+                      generated_at: "2024-01-15T11:00:00Z"
+                      date_range_start: "2024-01-01"
+                      date_range_end: "2024-01-31"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/history/reports:
+    get:
+      tags:
+        - History
+      summary: Get report history
+      description: |
+        Get list of all generated reports with their details and source file information.
+        
+        Returns reports sorted by generation date (newest first).
+      operationId: getReportsHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of reports to return
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+          example: 100
+      responses:
+        '200':
+          description: List of generated reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportHistoryItem'
+              example:
+                - id: 456
+                  report_name: sentiment_report_20240115.pdf
+                  report_type: pdf
+                  file_size: 1024000
+                  generated_at: "2024-01-15T11:00:00Z"
+                  report_path: "/data/processed/report_456.pdf"
+                  date_range_start: "2024-01-01"
+                  date_range_end: "2024-01-31"
+                  file_info:
+                    id: 123
+                    filename: survey_responses.csv
+                    uploaded_at: "2024-01-15T10:30:00Z"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/history/reports/{report_id}/download:
+    get:
+      tags:
+        - History
+      summary: Download report
+      description: Download a generated report file (PDF, CSV, etc.)
+      operationId: downloadReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          description: Report ID
+          schema:
+            type: integer
+          example: 456
+      responses:
+        '200':
+          description: Report file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Report not found
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained from `/api/auth/login`
+        
+        Example: `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+
+  schemas:
+    UserCreate:
+      type: object
+      required:
+        - username
+        - email
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: johndoe
+          description: Username (3-50 characters)
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+          description: Valid email address
+        password:
+          type: string
+          minLength: 6
+          example: SecurePassword123!
+          description: Password (minimum 6 characters)
+          writeOnly: true
+
+    UserLogin:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: johndoe
+        password:
+          type: string
+          example: SecurePassword123!
+          writeOnly: true
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: johndoe
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzA1MzI0ODAwfQ...
+          description: JWT access token
+        token_type:
+          type: string
+          example: bearer
+        user:
+          $ref: '#/components/schemas/UserResponse'
+
+    FileUploadResponse:
+      type: object
+      properties:
+        file_id:
+          type: integer
+          example: 123
+          description: ID of uploaded file (use for analysis endpoints)
+        filename:
+          type: string
+          example: survey_responses.csv
+        rows_count:
+          type: integer
+          example: 50000
+          description: Number of rows in the file
+        columns:
+          type: array
+          items:
+            type: string
+          example:
+            - id
+            - timestamp
+            - feedback
+            - rating
+          description: List of column names
+        text_col:
+          type: string
+          nullable: true
+          example: feedback
+          description: Detected text column (null if not detected)
+        time_col:
+          type: string
+          nullable: true
+          example: timestamp
+          description: Detected time/date column (null if not detected)
+        issues:
+          type: array
+          items:
+            type: string
+          example: []
+          description: List of validation issues or warnings
+
+    AnalysisRequest:
+      type: object
+      required:
+        - file_id
+      properties:
+        file_id:
+          type: integer
+          example: 123
+          description: ID of uploaded file
+        use_ai:
+          type: boolean
+          default: false
+          example: false
+          description: Use LLM for analysis (slower, more expensive, more accurate)
+        top_k:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+          example: 20
+          description: Number of themes to extract (for theme analysis)
+        date_start:
+          type: string
+          format: date
+          nullable: true
+          example: "2024-01-01"
+          description: Start date for filtering (ISO format: YYYY-MM-DD)
+        date_end:
+          type: string
+          format: date
+          nullable: true
+          example: "2024-01-31"
+          description: End date for filtering (ISO format: YYYY-MM-DD)
+
+    SentimentResponse:
+      type: object
+      properties:
+        sentiment_distribution:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            positive: 25000
+            negative: 15000
+            neutral: 10000
+          description: Count of responses by sentiment
+        processed_data:
+          type: object
+          properties:
+            total_rows:
+              type: integer
+              example: 50000
+            positive:
+              type: integer
+              example: 25000
+            negative:
+              type: integer
+              example: 15000
+            neutral:
+              type: integer
+              example: 10000
+
+    ThemeResponse:
+      type: object
+      properties:
+        themes:
+          type: array
+          items:
+            type: object
+            properties:
+              keyphrase:
+                type: string
+                example: customer service
+              weight:
+                type: number
+                format: float
+                example: 0.85
+              frequency:
+                type: integer
+                example: 1250
+          description: List of extracted themes
+        priorities:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              theme:
+                type: string
+                example: customer service
+              priority_score:
+                type: number
+                format: float
+                example: 0.92
+              impact:
+                type: string
+                enum:
+                  - low
+                  - medium
+                  - high
+                example: high
+              effort:
+                type: string
+                enum:
+                  - low
+                  - medium
+                  - high
+                example: medium
+          description: Prioritized themes with impact and effort scores
+
+    FileHistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123
+        filename:
+          type: string
+          example: survey_responses.csv
+        rows_count:
+          type: integer
+          example: 50000
+        uploaded_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        file_hash:
+          type: string
+          example: "a1b2c3d4e5f6..."
+          description: MD5 hash of file
+        file_path:
+          type: string
+          example: "/data/uploads/upload_1_a1b2c3d4.csv"
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportItem'
+          description: List of reports generated from this file
+
+    ReportHistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 456
+        report_name:
+          type: string
+          example: sentiment_report_20240115.pdf
+        report_type:
+          type: string
+          enum:
+            - pdf
+            - csv
+            - json
+          example: pdf
+        file_size:
+          type: integer
+          example: 1024000
+          description: File size in bytes
+        generated_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T11:00:00Z"
+        report_path:
+          type: string
+          example: "/data/processed/report_456.pdf"
+        date_range_start:
+          type: string
+          format: date
+          nullable: true
+          example: "2024-01-01"
+        date_range_end:
+          type: string
+          format: date
+          nullable: true
+          example: "2024-01-31"
+        file_info:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: integer
+              example: 123
+            filename:
+              type: string
+              example: survey_responses.csv
+            uploaded_at:
+              type: string
+              format: date-time
+              example: "2024-01-15T10:30:00Z"
+          description: Source file information
+
+    ReportItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 456
+        report_name:
+          type: string
+          example: sentiment_report_20240115.pdf
+        report_type:
+          type: string
+          example: pdf
+        file_size:
+          type: integer
+          example: 1024000
+        generated_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T11:00:00Z"
+        report_path:
+          type: string
+          example: "/data/processed/report_456.pdf"
+        date_range_start:
+          type: string
+          format: date
+          nullable: true
+          example: "2024-01-01"
+        date_range_end:
+          type: string
+          format: date
+          nullable: true
+          example: "2024-01-31"
+
+    AsyncTaskStatus:
+      type: object
+      properties:
+        task_id:
+          type: string
+          example: "abc123-def456-ghi789"
+        status:
+          type: string
+          enum:
+            - PENDING
+            - PROCESSING
+            - SUCCESS
+            - FAILURE
+          example: PROCESSING
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 45
+          description: Progress percentage (0-100)
+        message:
+          type: string
+          example: Processing chunk 45/100
+          description: Status message
+        result:
+          type: object
+          nullable: true
+          description: Results when status is SUCCESS
+        error:
+          type: string
+          nullable: true
+          description: Error message when status is FAILURE
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: Error message here
+      required:
+        - detail
+

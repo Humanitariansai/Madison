@@ -1,0 +1,102 @@
+# Google Cloud Build configuration for CI/CD
+steps:
+  # Build backend Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/survey-analysis-backend:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/survey-analysis-backend:latest'
+      - './backend'
+    id: 'build-backend'
+
+  # Build frontend Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/survey-analysis-frontend:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/survey-analysis-frontend:latest'
+      - './frontend'
+    id: 'build-frontend'
+
+  # Push backend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/survey-analysis-backend:$SHORT_SHA'
+    id: 'push-backend'
+    waitFor: ['build-backend']
+
+  # Push frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/survey-analysis-frontend:$SHORT_SHA'
+    id: 'push-frontend'
+    waitFor: ['build-frontend']
+
+  # Deploy backend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'survey-analysis-backend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/survey-analysis-backend:$SHORT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '300'
+      - '--max-instances'
+      - '10'
+      - '--set-env-vars'
+      - 'PORT=8080'
+    id: 'deploy-backend'
+    waitFor: ['push-backend']
+
+  # Deploy frontend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'survey-analysis-frontend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/survey-analysis-frontend:$SHORT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--port'
+      - '80'
+    id: 'deploy-frontend'
+    waitFor: ['push-frontend']
+
+images:
+  - 'gcr.io/$PROJECT_ID/survey-analysis-backend:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/survey-analysis-backend:latest'
+  - 'gcr.io/$PROJECT_ID/survey-analysis-frontend:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/survey-analysis-frontend:latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1800s'
+

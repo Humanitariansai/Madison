@@ -1,0 +1,20 @@
+# App Engine configuration (alternative to Cloud Run)
+# Note: This is optional - Cloud Run is recommended
+
+runtime: python311
+
+env_variables:
+  PORT: 8080
+
+automatic_scaling:
+  min_instances: 0
+  max_instances: 10
+  target_cpu_utilization: 0.6
+
+resources:
+  cpu: 2
+  memory_gb: 2
+  disk_size_gb: 10
+
+# Note: For Cloud Run deployment, use deploy.sh instead
+
