@@ -4,7 +4,8 @@ from io import BytesIO
 from transformers import CLIPProcessor, CLIPModel
 import torch
 
-class AssetClassifier():
+
+class AssetClassifier:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model_id = "openai/clip-vit-base-patch32"
@@ -15,25 +16,32 @@ class AssetClassifier():
         self.labels = {
             "LOGO": [
                 "a brand logo",
-                "a company logotype or wordmark", # Explicitly mention Wordmarks
+                "a company logotype or wordmark",  # Explicitly mention Wordmarks
                 "a graphic icon or symbol",
-                "white text logo on black background", # Handle the specific failure case
+                "white text logo on black background",  # Handle the specific failure case
                 "black text logo on white background",
-                "a stylized brand name"
+                "a stylized brand name",
             ],
             "TYPOGRAPHY": [
-                "a font specimen sheet", # Be specific: it's a sheet, not just text
+                "a font specimen sheet",  # Be specific: it's a sheet, not just text
                 "an alphabet grid of letters",
                 "a page containing lorem ipsum text",
                 "typography guidelines showing font weights",
-                "a document with multiple paragraphs"
+                "a document with multiple paragraphs",
             ],
             "IMAGERY": ["a photograph", "lifestyle imagery", "stock photo of people"],
-            "TEMPLATE": ["a layout design", "marketing flyer", "social media post template"]
+            "TEMPLATE": [
+                "a layout design",
+                "marketing flyer",
+                "social media post template",
+            ],
         }
 
-        self.flat_labels = [item for sublist in self.labels.values() for item in sublist]
+        self.flat_labels = [
+            item for sublist in self.labels.values() for item in sublist
+        ]
         self.label_map = [key for key, val in self.labels.items() for _ in val]
+
     def _load_image(self, image_source):
         """
         Smart loader that handles:
@@ -45,11 +53,11 @@ class AssetClassifier():
             # --- FIX STARTS HERE ---
             # 1. Check if input is ALREADY a PIL Image
             if isinstance(image_source, Image.Image):
-                return image_source.convert('RGB'), "OK"
+                return image_source.convert("RGB"), "OK"
             # --- FIX ENDS HERE ---
 
             # 2. Handle URL strings
-            if isinstance(image_source, str) and image_source.startswith('http'):
+            if isinstance(image_source, str) and image_source.startswith("http"):
                 headers = {"User-Agent": "Mozilla/5.0"}
                 response = requests.get(image_source, headers=headers, timeout=10)
                 if "svg" in response.headers.get("Content-Type", ""):
@@ -62,7 +70,7 @@ class AssetClassifier():
                     return None, "SVG_DETECTED"
                 img = Image.open(image_source)
 
-            return img.convert('RGB'), "OK"
+            return img.convert("RGB"), "OK"
 
         except Exception as e:
             return None, str(e)
@@ -79,10 +87,7 @@ class AssetClassifier():
 
         # Process inputs
         inputs = self.processor(
-            text=self.flat_labels,
-            images=img,
-            return_tensors="pt",
-            padding=True
+            text=self.flat_labels, images=img, return_tensors="pt", padding=True
         ).to(self.device)
 
         with torch.no_grad():
@@ -97,7 +102,7 @@ class AssetClassifier():
         """Process multiple images in a single forward pass."""
         images = []
         statuses = []
-        
+
         for src in image_sources:
             img, status = self._load_image(src)
             if status == "SVG_DETECTED":
@@ -107,24 +112,24 @@ class AssetClassifier():
             else:
                 images.append(img)
                 statuses.append(None)  # Placeholder for batch result
-        
+
         if not images:
             return statuses
-        
+
         # Process all images in one batch
         inputs = self.processor(
             text=self.flat_labels,
             images=images,  # List of images
             return_tensors="pt",
-            padding=True
+            padding=True,
         ).to(self.device)
-        
+
         with torch.no_grad():
             outputs = self.model(**inputs)
-        
+
         # logits_per_image is now (batch_size, num_labels)
         probs = outputs.logits_per_image.softmax(dim=1)
-        
+
         # Map results back
         batch_idx = 0
         results = []
@@ -136,11 +141,11 @@ class AssetClassifier():
                 conf = probs[batch_idx][best_idx].item()
                 results.append((self.label_map[best_idx], conf))
                 batch_idx += 1
-        
+
         return results
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     print("Hello World")
     classifier = AssetClassifier()
 
