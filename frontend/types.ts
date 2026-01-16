@@ -10,7 +10,7 @@ export interface BoundingBox {
 export interface InspectionResult {
   id: string;
   pageNumber: number;
-  type: 'COLOR' | 'FONT' | 'LOGO' | 'SPACING' | 'IMAGERY' | 'TEXT_BODY'; // Extended types
+  type: 'PALETTE' | 'TYPOGRAPHY' | 'LOGO' | 'SPACING' | 'IMAGERY' | 'TEXT_BODY'; // Extended types
   message: string;
   level: InspectionLevel;
   status: 'PASS' | 'FAIL';

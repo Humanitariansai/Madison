@@ -1,11 +1,7 @@
-import sys
 import os
 
-# Add local directory to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from brand_guideline_extractor import BrandGuidelineExtractor
-from brand_guideline_generator import BrandGuidelineGenerator
+from .brand_guideline_extractor import BrandGuidelineExtractor
+from .brand_guideline_generator import BrandGuidelineGenerator
 
 
 def test_integration():

@@ -28,11 +28,19 @@ class BrandLogoRule(BaseModel):
     type: str  # "DO" or "DONT"
 
 
+class ColorUsageRule(BaseModel):
+    background_color: str  # e.g., "Aubergine"
+    allowed_text_colors: List[str]  # e.g., ["White"]
+    forbidden_text_colors: List[str] # e.g., ["Black", "Secondary Colors"]
+    context_description: str # The extracted text specific to this rule
+
+
 class ExtractedBrandInfo(BaseModel):
     brand_name: Optional[str] = None
     colors: List[BrandColor] = []
     typography: List[BrandTypography] = []
     logo_rules: List[BrandLogoRule] = []
+    color_usage_rules: List[ColorUsageRule] = [] # New Field
     forbidden_keywords: List[str] = []
 
 
@@ -74,8 +82,12 @@ class BrandGuidelineExtractor:
         1. Brand Name
         2. Colors (Name, Hex, RGB, CMYK, Usage context)
         3. Typography rules (Family, Weights, Use Case)
-        4. Logo Usage Rules (Do's and Don'ts)
-        5. Negative/Forbidden keywords (e.g. "don't be aggressive")
+        4. Logo Usage Rules (Do's and Don'ts) - Logic for logo placement.
+        5. TYPOGRAPHY COLOR RULES: Crucial. Look for rules specifying which TEXT colors (font colors) are allowed on specific background colors. 
+           - Example: "Use only white text on Aubergine."
+           - Example: "Do not use secondary colors for text."
+           - Example: "Black text is for light backgrounds."
+        6. Negative/Forbidden keywords (e.g. "don't be aggressive")
         
         Return ONLY valid JSON matching this schema:
         {json.dumps(schema)}
@@ -110,6 +122,11 @@ class BrandGuidelineExtractor:
 
             # Parse JSON
             data = json.loads(content)
+            
+            # Robustness: Handle list wrapping
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0]
+                
             return ExtractedBrandInfo(**data)
 
         except Exception as e:

@@ -97,6 +97,9 @@ class BrandGuidelineGenerator:
             if extracted_rules.logo_rules:
                 brand_kit["logo_rules"] = [r.dict() for r in extracted_rules.logo_rules]
 
+            if extracted_rules.color_usage_rules:
+                brand_kit["color_usage_rules"] = [r.dict() for r in extracted_rules.color_usage_rules]
+
             if extracted_rules.forbidden_keywords:
                 brand_kit["forbidden_keywords"] = extracted_rules.forbidden_keywords
 
