@@ -1,120 +1,115 @@
 {
-  "name": "MarketMinds Multi-Agent Research",
+  "name": "MarketMind - Run Analysis (Webhook)",
   "nodes": [
     {
       "parameters": {
+        "path": "marketmind/run",
         "httpMethod": "POST",
-        "path": "market-research",
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "webhook-trigger",
+      "id": "WebhookTrigger",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [240, 300],
-      "webhookId": "market-research-webhook"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Input validation and preprocessing\nconst inputData = $input.first().json;\n\n// Validate required fields\nconst requiredFields = ['product_name', 'product_description', 'industry', 'geography', 'scale'];\nconst missingFields = requiredFields.filter(field => !inputData[field]);\n\nif (missingFields.length > 0) {\n  throw new Error(`Missing required fields: ${missingFields.join(', ')}`);\n}\n\n// Prepare inputs for all agents\nconst inputs = {\n  product_name: inputData.product_name,\n  product_description: inputData.product_description,\n  usp: inputData.usp || '',\n  usp_confidence: inputData.usp_confidence || 'Not Sure',\n  industry: inputData.industry,\n  geography: inputData.geography,\n  scale: inputData.scale,\n  competitor_focus: inputData.competitor_focus || '',\n  additional_context: inputData.additional_context || '',\n  refocus_mode: inputData.refocus_mode || 'false',\n  enable_charts: inputData.enable_charts !== false,\n\n  include_market_maps: inputData.include_market_maps !== false\n};\n\n// Add metadata\ninputs.analysis_id = `analysis_${Date.now()}`;\ninputs.start_time = new Date().toISOString();\n\nreturn {\n  json: inputs\n};"
-      },
-      "id": "input-processor",
-      "name": "Input Processor",
-      "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 300]
-      },
-      "id": "strategy-consultant",
-      "name": "Strategy Consultant",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [680, 200]
+      "position": [
+        260,
+        260
+      ]
     },
     {
       "parameters": {
-        "workflowId": "usp-analyst-workflow",
-        "sourceData": "define",
-        "define": {
-          "inputs": "={{ $json }}"
-        }
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "product_name",
+              "value": "={{$json.body.product_name || 'EcoWave Smart Bottle'}}"
+            },
+            {
+              "name": "industry",
+              "value": "={{$json.body.industry || 'Consumer Goods'}}"
+            },
+            {
+              "name": "geography",
+              "value": "={{$json.body.geography || 'Global'}}"
+            },
+            {
+              "name": "scale",
+              "value": "={{$json.body.scale || 'SME'}}"
+            },
+            {
+              "name": "OPENAI_API_KEY",
+              "value": "={{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "SERPER_API_KEY",
+              "value": "={{$env.SERPER_API_KEY}}"
+            },
+            {
+              "name": "repo_path",
+              "value": "=/data/marketmind"
+            }
+          ]
+        },
+        "options": {}
       },
-      "id": "usp-analyst",
-      "name": "USP Analyst",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [900, 200]
-    },
-    {
-      "parameters": {
-        "workflowId": "competitor-analyst-workflow",
-        "sourceData": "define",
-        "define": {
-          "inputs": "={{ $json }}"
-        }
-      },
-      "id": "competitor-analyst",
-      "name": "Competitor Analyst",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [1340, 200]
-    },
-    {
-      "parameters": {
-        "workflowId": "customer-analyst-workflow",
-        "sourceData": "define",
-        "define": {
-          "inputs": "={{ $json }}"
-        }
-      },
-      "id": "customer-analyst",
-      "name": "Customer Analyst",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [1560, 200]
-    },
-    {
-      "parameters": {
-        "workflowId": "devils-advocate-workflow",
-        "sourceData": "define",
-        "define": {
-          "inputs": "={{ $json }}",
-          "context_reports": "={{ $('Strategy Consultant').item.json.report }}\n{{ $('USP Analyst').item.json.report }}\n{{ $('Porter\\'s Trend Analyst').item.json.report }}\n{{ $('Competitor Analyst').item.json.report }}\n{{ $('Customer Analyst').item.json.report }}"
-        }
-      },
-      "id": "devils-advocate",
-      "name": "Devil's Advocate",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [1780, 200]
-    },
-      },
-      "id": "lead-synthesizer",
-      "name": "Lead Synthesizer",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [2000, 200]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Collect all reports and metadata\nconst reports = {\n  research_plan: $('Strategy Consultant').item.json.report,\n  usp_analysis: $('USP Analyst').item.json.report,\n  porters_trend_analysis: $('Porter\\'s Trend Analyst').item.json.report,\n  competitor_analysis: $('Competitor Analyst').item.json.report,\n  customer_analysis: $('Customer Analyst').item.json.report,\n  risk_analysis: $('Devil\\'s Advocate').item.json.report,\n  final_report: $('Lead Synthesizer').item.json.report\n};\n\nconst metadata = {\n  analysis_id: $('Input Processor').item.json.analysis_id,\n  start_time: $('Input Processor').item.json.start_time,\n  end_time: new Date().toISOString(),\n  inputs: $('Input Processor').item.json\n};\n\n// Generate individual report files\nconst reportFiles = [];\nfor (const [key, content] of Object.entries(reports)) {\n  reportFiles.push({\n    filename: `${key}.md`,\n    content: content,\n    type: 'markdown'\n  });\n}\n\nreturn {\n  json: {\n    reports: reportFiles,\n    metadata: metadata,\n    success: true,\n    message: 'Market research analysis completed successfully'\n  }\n};"
-      },
-      "id": "report-collector",
-      "name": "Report Collector",
-      "type": "n8n-nodes-base.code",
+      "id": "SetInputs",
+      "name": "Set Inputs",
+      "type": "n8n-nodes-base.set",
       "typeVersion": 2,
-      "position": [2220, 200]
+      "position": [
+        520,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "command": "bash",
+        "arguments": [
+          "-lc",
+          "set -euo pipefail\ncd \"{{$json.repo_path}}\"\n\n# Clean outputs for a fresh run\nrm -rf outputs\nmkdir -p outputs\n\n# Export runtime env vars expected by your code\nexport PRODUCT_NAME=\"{{$json.product_name}}\"\nexport INDUSTRY=\"{{$json.industry}}\"\nexport GEOGRAPHY=\"{{$json.geography}}\"\nexport SCALE=\"{{$json.scale}}\"\n\n# API keys (set these as n8n environment variables or replace with fixed values)\nexport OPENAI_API_KEY=\"{{$json.OPENAI_API_KEY}}\"\nexport SERPER_API_KEY=\"{{$json.SERPER_API_KEY}}\"\n\n# (Recommended) ensure dependencies exist (optional)\n# python3 -m pip install -r requirements.txt\n\npython3 main.py\n\n# Print the final report to stdout so n8n can capture it\necho \"\\n---FINAL_REPORT_START---\"\nif [ -f outputs/final_market_strategy_report.md ]; then\n  cat outputs/final_market_strategy_report.md\nelse\n  echo \"(No final report generated: outputs/final_market_strategy_report.md not found.)\"\nfi\necho \"---FINAL_REPORT_END---\"\n"
+        ],
+        "options": {
+          "maxBuffer": 10485760
+        }
+      },
+      "id": "ExecuteMain",
+      "name": "Execute main.py",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        780,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const out = $json.stdout || '';\nconst start = out.indexOf('---FINAL_REPORT_START---');\nconst end = out.indexOf('---FINAL_REPORT_END---');\nlet report = '';\nif (start !== -1 && end !== -1 && end > start) {\n  report = out.slice(start + '---FINAL_REPORT_START---'.length, end).trim();\n}\nreturn [{\n  success: true,\n  product_name: $json.product_name,\n  industry: $json.industry,\n  geography: $json.geography,\n  scale: $json.scale,\n  report,\n  raw_stdout_tail: out.slice(-2000)\n}];"
+      },
+      "id": "ParseReport",
+      "name": "Parse Final Report",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        260
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ $json }}"
+        "responseBody": "={\n  \"success\": $json.success,\n  \"product_name\": $json.product_name,\n  \"industry\": $json.industry,\n  \"geography\": $json.geography,\n  \"scale\": $json.scale,\n  \"final_report\": $json.report,\n  \"note\": \"If final_report is empty, check that outputs/final_market_strategy_report.md was created. raw_stdout_tail included for debugging.\",\n  \"raw_stdout_tail\": $json.raw_stdout_tail\n}",
+        "options": {}
       },
-      "id": "webhook-response",
-      "name": "Webhook Response",
+      "id": "WebhookResponse",
+      "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [2440, 200]
+      "position": [
+        1300,
+        260
+      ]
     }
   ],
   "connections": {
@@ -122,86 +117,40 @@
       "main": [
         [
           {
-            "node": "Input Processor",
+            "node": "Set Inputs",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Input Processor": {
+    "Set Inputs": {
       "main": [
         [
           {
-            "node": "Strategy Consultant",
+            "node": "Execute main.py",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Strategy Consultant": {
+    "Execute main.py": {
       "main": [
         [
           {
-            "node": "USP Analyst",
+            "node": "Parse Final Report",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Porter's Trend Analyst": {
+    "Parse Final Report": {
       "main": [
         [
           {
-            "node": "Competitor Analyst",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Competitor Analyst": {
-      "main": [
-        [
-          {
-            "node": "Customer Analyst",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-
-    },
-    "Devil's Advocate": {
-      "main": [
-        [
-          {
-            "node": "Lead Synthesizer",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Lead Synthesizer": {
-      "main": [
-        [
-          {
-            "node": "Report Collector",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Report Collector": {
-      "main": [
-        [
-          {
-            "node": "Webhook Response",
+            "node": "Respond to Webhook",
             "type": "main",
             "index": 0
           }
@@ -209,13 +158,10 @@
       ]
     }
   },
-  "pinData": {},
+  "active": false,
+  "versionId": "1",
   "settings": {
-    "executionOrder": "v1"
-  },
-  "staticData": {},
-  "tags": [],
-  "triggerCount": 1,
-  "updatedAt": "2024-01-01T00:00:00.000Z",
-  "versionId": "1"
+    "executionTimeout": 3600
+  }
 }
+
