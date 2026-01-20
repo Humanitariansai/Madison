@@ -1,4 +1,3 @@
-%%writefile agents.py
 # agents.py
 from crewai import Agent
 from tools.scrape_pipeline import WebSearchTool, WebScrapeTool, FallbackSearchTool, FileReadTool
@@ -78,4 +77,3 @@ class MarketResearchAgents:
             tools=[self.file_tool],
             verbose=False
         )
-
