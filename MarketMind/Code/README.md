@@ -88,18 +88,4 @@ OPENAI_API_KEY=your_openai_api_key
 SERPER_API_KEY=your_serper_api_key
 
 
-## Project Structure
-
-.
-├── app.py                  # Streamlit UI
-├── main.py                 # Analysis runner
-├── agents.py               # CrewAI agents
-├── tasks.py                # Research tasks
-├── models.py               # Data models
-├── tools/
-│   ├── scrape_pipeline.py  # Web scraping & extraction
-│   └── review_scraper.py   # Sentiment analysis
-├── outputs/                # Generated reports
-├── requirements.txt
-└── runtime.txt
 
