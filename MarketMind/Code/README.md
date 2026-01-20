@@ -8,6 +8,7 @@ MarketMind is an AI-driven market research platform that automates competitor an
 
 It is designed for founders, product managers, and strategy teams who want fast, structured market intelligence without manual research overhead.
 
+
 🚀 What MarketMind Does
 
 MarketMind runs a multi-stage AI research pipeline to generate:
@@ -23,6 +24,7 @@ MarketMind runs a multi-stage AI research pipeline to generate:
 🧾 Executive-ready strategy reports (Markdown)
 
 All outputs are generated dynamically and visualized in an interactive Streamlit dashboard.
+
 
 🧩 Key Features
 
@@ -60,6 +62,7 @@ Exportable Research
 
 Generates structured .md reports for presentations & decks
 
+
 🏗️ Architecture Overview
 Streamlit UI (app.py)
         |
@@ -75,6 +78,7 @@ CrewAI Orchestration
         |
         v
 Markdown Reports → ./outputs/
+
 
 📦 Tech Stack
 Frontend / UI
@@ -111,12 +115,14 @@ Render (Python Web Service)
 
 Python 3.11
 
+
 ⚙️ Environment Variables
 
 Set the following in Render → Environment Variables (or locally via .env):
 
 OPENAI_API_KEY=your_openai_key
 SERPER_API_KEY=your_serper_key
+
 
 
 ⚠️ Never commit API keys to GitHub.
@@ -131,6 +137,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 
+
 📁 Project Structure
 .
 ├── app.py                  # Streamlit UI
@@ -144,6 +151,7 @@ streamlit run app.py
 ├── outputs/                # Generated reports
 ├── requirements.txt
 └── runtime.txt
+
 
 📄 Generated Reports
 
@@ -165,6 +173,7 @@ final_market_strategy_report.md
 
 These are viewable directly in the app UI.
 
+
 🔒 Security Notes
 
 API keys are server-side only
@@ -174,6 +183,7 @@ No keys are exposed to the browser
 Scraping includes fallback logic & safe parsing
 
 Designed to run within free-tier cloud limits
+
 
 🧠 Why MarketMind?
 
@@ -186,6 +196,7 @@ Manual
 Expensive
 
 MarketMind turns it into a repeatable, automated AI workflow that produces strategy-grade insights in minutes.
+
 
 📌 Roadmap (Planned)
 
