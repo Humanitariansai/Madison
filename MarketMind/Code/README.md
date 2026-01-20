@@ -90,6 +90,7 @@ SERPER_API_KEY=your_serper_api_key
 
 ## Project Structure
 
+.
 ├── app.py                  # Streamlit UI
 ├── main.py                 # Analysis runner
 ├── agents.py               # CrewAI agents
