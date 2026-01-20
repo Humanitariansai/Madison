@@ -87,17 +87,3 @@ Set the following variables in **Render → Environment Variables** (or locally 
 OPENAI_API_KEY=your_openai_api_key
 SERPER_API_KEY=your_serper_api_key
 
-## Project Structure
-
-```bash
-.
-├─ app.py                  # Streamlit dashboard
-├─ main.py                 # Orchestrates CrewAI pipeline
-├─ agents.py               # Agent role definitions
-├─ tasks.py                # Task definitions for each analysis step
-├─ tools/
-│  ├─ __init__.py
-│  └─ feature_comparison.py
-├─ requirements.txt
-└─ README.md
-
