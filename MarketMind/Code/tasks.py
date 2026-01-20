@@ -1,4 +1,3 @@
-%%writefile tasks.py
 from crewai import Task
 
 class MarketResearchTasks:
