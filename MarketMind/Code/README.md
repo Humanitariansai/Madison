@@ -1,69 +1,200 @@
-# Marketing Analysis AI Crew
+🧠 MarketMind
 
-This project uses CrewAI to automate marketing analysis for a given product or service. It assembles a team of AI agents to perform market research, competitor analysis, customer sentiment analysis, and synthesize the findings into a strategic report.
+AI-Powered Market Research & Strategy Assistant
 
-## Project Structure
+🔗 Live App: https://marketmind-17.onrender.com/
 
-```
-/MarketMind/
-├── main.py                 # Main script to run your crew
-├── app.py                  # Streamlit UI to interact with the crew
-├── tools/
-│   ├── __init__.py
-│   └── custom_search_tool.py # A custom tool for Reddit searches
-├── config/
-│   ├── agents.yaml           # Agent configurations
-│   └── tasks.yaml            # Task configurations
-├── .env                    # For storing API keys (create this from .env.example)
-├── .env.example            # Example environment file
-├── requirements.txt        # Project dependencies
-└── README.md               # This file
-```
+MarketMind is an AI-driven market research platform that automates competitor analysis, customer sentiment insights, feature comparison, and executive strategy synthesis using multi-agent orchestration and large language models.
 
-## Setup and Installation
+It is designed for founders, product managers, and strategy teams who want fast, structured market intelligence without manual research overhead.
 
-1.  **Clone the repository (or set up the project files as provided).**
+🚀 What MarketMind Does
 
-2.  **Create a virtual environment and install dependencies:**
-    It's recommended to use a virtual environment to manage project dependencies.
+MarketMind runs a multi-stage AI research pipeline to generate:
 
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-    pip install -r requirements.txt
-    ```
+📊 Competitor intelligence (pricing, positioning, differentiation)
 
-3.  **Configure Environment Variables:**
-    Create a `.env` file in the project root by copying the `.env.example` file.
+💬 Customer sentiment analysis (VADER-based NLP)
 
-    ```bash
-    cp .env.example .env
-    ```
+⚙️ Feature comparison & benchmarking
 
-    Now, edit the `.env` file to add your API keys:
-    -   `OPENAI_API_KEY`: Your API key from OpenAI (or another LLM provider compatible with CrewAI).
-    -   `SERPER_API_KEY`: Your API key from [Serper.dev](https://serper.dev) for the search tool.
+📈 Market growth projections
 
-## How to Run
+🧾 Executive-ready strategy reports (Markdown)
 
-There are two ways to run the marketing crew:
+All outputs are generated dynamically and visualized in an interactive Streamlit dashboard.
 
-### 1. Via the Command Line
+🧩 Key Features
 
-Execute the main script directly from your terminal:
+Multi-Agent Architecture (CrewAI)
 
-```bash
-python main.py
-```
+Strategy Consultant
 
-The crew will start its analysis using the default product name specified in `main.py` or the `PRODUCT_NAME` from your `.env` file. The final reports will be saved as Markdown files in the project root.
+Competitor Analyst
 
-### 2. Via the Streamlit Web Interface
+Customer Persona Analyst
 
-Launch the Streamlit application for an interactive experience:
+Review Sentiment Analyst
 
-```bash
+Strategy Synthesizer
+
+Automated Web Intelligence
+
+Web search + scraping
+
+Content extraction (readability + trafilatura)
+
+Language detection & fallback logic
+
+Interactive Dashboard
+
+Sentiment pie charts
+
+Competitor pricing bar charts
+
+Feature comparison radar
+
+Market growth trendlines
+
+Exportable Research
+
+Generates structured .md reports for presentations & decks
+
+🏗️ Architecture Overview
+Streamlit UI (app.py)
+        |
+        v
+run_analysis()  ←── main.py
+        |
+        v
+CrewAI Orchestration
+  ├─ Agents (agents.py)
+  ├─ Tasks (tasks.py)
+  ├─ Web Scraping (scrape_pipeline.py)
+  └─ Sentiment NLP (review_scraper.py)
+        |
+        v
+Markdown Reports → ./outputs/
+
+📦 Tech Stack
+Frontend / UI
+
+Streamlit
+
+Plotly
+
+Pandas
+
+Matplotlib
+
+AI & Agents
+
+OpenAI API
+
+CrewAI
+
+Web Scraping & NLP
+
+BeautifulSoup
+
+Readability-lxml
+
+Trafilatura
+
+LangDetect
+
+NLTK (VADER sentiment)
+
+Deployment
+
+Render (Python Web Service)
+
+Python 3.11
+
+⚙️ Environment Variables
+
+Set the following in Render → Environment Variables (or locally via .env):
+
+OPENAI_API_KEY=your_openai_key
+SERPER_API_KEY=your_serper_key
+
+
+⚠️ Never commit API keys to GitHub.
+
+🛠️ Local Setup
+git clone https://github.com/<your-username>/MarketMind.git
+cd MarketMind
+
+python -m venv .venv
+source .venv/bin/activate
+
+pip install -r requirements.txt
 streamlit run app.py
-```
 
-This will open a new tab in your web browser. You can configure the product name in the sidebar and click "Start Analysis" to kick off the crew. The real-time logs of the agents' work will be displayed on the page, and you can view and download the final reports once the process is complete.
+📁 Project Structure
+.
+├── app.py                  # Streamlit UI
+├── main.py                 # Analysis runner
+├── agents.py               # CrewAI agents
+├── tasks.py                # Research tasks
+├── models.py               # Data models
+├── tools/
+│   ├── scrape_pipeline.py  # Web scraping & extraction
+│   └── review_scraper.py   # Sentiment analysis
+├── outputs/                # Generated reports
+├── requirements.txt
+└── runtime.txt
+
+📄 Generated Reports
+
+After each run, MarketMind produces:
+
+research_plan.md
+
+competitor_analysis.md
+
+customer_analysis.md
+
+review_sentiment.md
+
+feature_comparison.md
+
+executive_summary.md
+
+final_market_strategy_report.md
+
+These are viewable directly in the app UI.
+
+🔒 Security Notes
+
+API keys are server-side only
+
+No keys are exposed to the browser
+
+Scraping includes fallback logic & safe parsing
+
+Designed to run within free-tier cloud limits
+
+🧠 Why MarketMind?
+
+Traditional market research is:
+
+Slow
+
+Manual
+
+Expensive
+
+MarketMind turns it into a repeatable, automated AI workflow that produces strategy-grade insights in minutes.
+
+📌 Roadmap (Planned)
+
+Async/background execution for long analyses
+
+PDF / PPT export
+
+Persistent project history
+
+Frontend + API split for scale
+
+n8n / workflow automation integration
