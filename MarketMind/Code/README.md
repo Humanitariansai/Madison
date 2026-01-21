@@ -51,8 +51,48 @@ All outputs are generated dynamically and visualized in an interactive dashboard
 ## 🏗️ Architecture Overview
 
 .
-
+Streamlit UI (app.py)
+|
+v
+run_analysis() ←── main.py
+|
+v
+CrewAI Orchestration
+├─ Agents (agents.py)
+├─ Tasks (tasks.py)
+├─ Web Scraping (scrape_pipeline.py)
+└─ Sentiment NLP (review_scraper.py)
+|
+v
+Markdown Reports → ./outputs/
 ---
+
+
+## 📁 Project Structure
+MarketMind/
+│
+├── app.py # Streamlit dashboard (UI)
+├── main.py # Analysis runner & orchestration entrypoint
+├── agents.py # CrewAI agent definitions
+├── tasks.py # Task definitions for agents
+├── models.py # Data models / schemas
+│
+├── tools/
+│ ├── scrape_pipeline.py # Web search, scraping & content extraction
+│ └── review_scraper.py # Review scraping & sentiment analysis (NLTK VADER)
+│
+├── outputs/ # Generated research reports (.md)
+│ ├── research_plan.md
+│ ├── competitor_analysis.md
+│ ├── customer_analysis.md
+│ ├── review_sentiment.md
+│ ├── feature_comparison.md
+│ ├── executive_summary.md
+│ └── final_market_strategy_report.md
+│
+├── requirements.txt # Python dependencies
+├── runtime.txt # Python version pin (3.11)
+└── README.md
 
 ## 📦 Tech Stack
 
