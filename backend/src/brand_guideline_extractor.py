@@ -1,9 +1,10 @@
+import json
+import os
+from typing import List, Optional
+
 import pytesseract
 from pdf2image import convert_from_path
 from pydantic import BaseModel
-from typing import List, Optional
-import os
-import json
 
 # --- Data Models ---
 
@@ -31,8 +32,8 @@ class BrandLogoRule(BaseModel):
 class ColorUsageRule(BaseModel):
     background_color: str  # e.g., "Aubergine"
     allowed_text_colors: List[str]  # e.g., ["White"]
-    forbidden_text_colors: List[str] # e.g., ["Black", "Secondary Colors"]
-    context_description: str # The extracted text specific to this rule
+    forbidden_text_colors: List[str]  # e.g., ["Black", "Secondary Colors"]
+    context_description: str  # The extracted text specific to this rule
 
 
 class ExtractedBrandInfo(BaseModel):
@@ -40,7 +41,7 @@ class ExtractedBrandInfo(BaseModel):
     colors: List[BrandColor] = []
     typography: List[BrandTypography] = []
     logo_rules: List[BrandLogoRule] = []
-    color_usage_rules: List[ColorUsageRule] = [] # New Field
+    color_usage_rules: List[ColorUsageRule] = []  # New Field
     forbidden_keywords: List[str] = []
 
 
@@ -76,22 +77,24 @@ class BrandGuidelineExtractor:
         schema = ExtractedBrandInfo.model_json_schema()
 
         prompt = f"""
-        You are a Brand Identity Expert. Extract specific brand guidelines from the provided PDF text.
-        
+        You are a Brand Identity Expert.
+        Extract specific brand guidelines from the provided PDF text.
+
         I need you to extract:
         1. Brand Name
         2. Colors (Name, Hex, RGB, CMYK, Usage context)
         3. Typography rules (Family, Weights, Use Case)
         4. Logo Usage Rules (Do's and Don'ts) - Logic for logo placement.
-        5. TYPOGRAPHY COLOR RULES: Crucial. Look for rules specifying which TEXT colors (font colors) are allowed on specific background colors. 
+        5. TYPOGRAPHY COLOR RULES: Crucial. Look for rules specifying which
+            TEXT colors (font colors) are allowed on specific background colors.
            - Example: "Use only white text on Aubergine."
            - Example: "Do not use secondary colors for text."
            - Example: "Black text is for light backgrounds."
         6. Negative/Forbidden keywords (e.g. "don't be aggressive")
-        
+
         Return ONLY valid JSON matching this schema:
         {json.dumps(schema)}
-        
+
         --- TEXT START ---
         {text[:15000]} # Truncate to avoid context window limits if too large
         --- TEXT END ---
@@ -108,6 +111,7 @@ class BrandGuidelineExtractor:
                 # Fallback to OPENAI_API_KEY if using openai
                 api_key = os.getenv("OPENAI_API_KEY")
 
+            # pyrefly: ignore [not-callable]
             response = completion(
                 model=model,
                 api_key=api_key,
@@ -122,11 +126,11 @@ class BrandGuidelineExtractor:
 
             # Parse JSON
             data = json.loads(content)
-            
+
             # Robustness: Handle list wrapping
             if isinstance(data, list) and len(data) > 0:
                 data = data[0]
-                
+
             return ExtractedBrandInfo(**data)
 
         except Exception as e:

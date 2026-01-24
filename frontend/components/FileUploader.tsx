@@ -10,13 +10,13 @@ interface FileUploaderProps {
   helperText?: string;
 }
 
-export const FileUploader: React.FC<FileUploaderProps> = ({ 
-  label = "Upload File", 
-  accept = "application/pdf", 
-  files, 
+export const FileUploader: React.FC<FileUploaderProps> = ({
+  label = "Upload File",
+  accept = "application/pdf",
+  files,
   onFilesChange,
   multiple = false,
-  helperText 
+  helperText
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
 

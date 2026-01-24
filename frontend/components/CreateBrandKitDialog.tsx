@@ -15,7 +15,7 @@ interface Props {
 
 export const CreateBrandKitDialog: React.FC<Props> = ({ isOpen, onClose, onSubmit, isProcessing }) => {
   const [name, setName] = useState('');
-  
+
   // CHANGED: State is now an array
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
@@ -31,7 +31,7 @@ export const CreateBrandKitDialog: React.FC<Props> = ({ isOpen, onClose, onSubmi
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
-        
+
         {/* Header */}
         <div className="p-6 border-b flex justify-between items-center bg-slate-50">
           <div>
@@ -65,11 +65,11 @@ export const CreateBrandKitDialog: React.FC<Props> = ({ isOpen, onClose, onSubmi
                 />
               </div>
 
-              {/* 
-                 REPLACED: Huge block of manual drag/drop code 
-                 WITH: Reusable Component 
+              {/*
+                 REPLACED: Huge block of manual drag/drop code
+                 WITH: Reusable Component
               */}
-              <FileUploader 
+              <FileUploader
                 label="Upload Assets"
                 files={selectedFiles}          // Pass the array
                 onFilesChange={setSelectedFiles} // Update the array

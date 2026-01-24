@@ -41,7 +41,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
           <p className="text-slate-500 text-sm mb-4">
             Gold standard definition. Parsed from {brandKit.files.length} source files.
           </p>
-          
+
           {/* Brand Voice Chips */}
           {brandKit.brand_voice_attributes && (
             <div className="flex flex-wrap gap-2">
@@ -50,7 +50,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
                         {v}
                     </Badge>
                 ))}
-                
+
                 {brandKit.forbidden_keywords && brandKit.forbidden_keywords.length > 0 && (
                    <span className="text-xs text-red-400 flex items-center ml-2 border-l pl-3">
                      Avoid: {brandKit.forbidden_keywords.join(", ")}
@@ -85,7 +85,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
             <TabsContent value="logos" className="flex-1 overflow-hidden mt-0 border-t border-slate-100">
               <ScrollArea className="h-full w-full">
                 <div className="p-8 max-w-7xl mx-auto space-y-8">
-                
+
                   {/* LOGO RULES SECTION */}
                   {brandKit.logo_rules && brandKit.logo_rules.length > 0 && (
                     <div className="grid md:grid-cols-2 gap-4">
@@ -106,7 +106,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
                                 </ul>
                             </CardContent>
                         </Card>
-                        
+
                         {/* DON'T Rules */}
                         <Card className="border-red-100 bg-red-50/50">
                             <CardHeader className="pb-2">
@@ -183,7 +183,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
                           </span>
                         )}
                       </div>
-                      
+
                       {/* Rich Data Details */}
                       {'cmyk' in color && (
                          <div className="text-[10px] text-slate-400 font-mono space-y-0.5 mt-2">
@@ -191,7 +191,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
                            {color.cmyk && <div className="flex justify-between"><span>CMYK</span> <span>{color.cmyk}</span></div>}
                          </div>
                       )}
-                      
+
                       {/* Fallback for basic colors */}
                       {!('cmyk' in color) && (
                          <p className="text-xs text-slate-500 capitalize">{color.type}</p>
@@ -269,7 +269,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit, onBack }) =>
                 </CardFooter>
               </Card>
             </TabsContent>
-        
+
         </div>
         </Tabs>
       </div>

@@ -8,7 +8,7 @@ project-excludes = ["**/node_modules", "**/__pycache__", "**/*venv/**", "**/.[!/
 # add those to `project-excludes` automatically
 use-ignore-files = true
 # import project files from "."
-search-path = ["."]
+search-path = [".", "backend/src"]
 # let Pyrefly try to guess your search path
 disable-search-path-heuristics = false
 # do not include any third-party packages (except those provided by an interpreter)

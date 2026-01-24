@@ -1,8 +1,9 @@
-import requests
-from PIL import Image
 from io import BytesIO
-from transformers import CLIPProcessor, CLIPModel
+
+import requests
 import torch
+from PIL import Image
+from transformers import CLIPModel, CLIPProcessor
 
 
 class AssetClassifier:
@@ -18,7 +19,8 @@ class AssetClassifier:
                 "a brand logo",
                 "a company logotype or wordmark",  # Explicitly mention Wordmarks
                 "a graphic icon or symbol",
-                "white text logo on black background",  # Handle the specific failure case
+                # Handle the specific failure case
+                "white text logo on black background",
                 "black text logo on white background",
                 "a stylized brand name",
             ],
@@ -108,10 +110,10 @@ class AssetClassifier:
             if status == "SVG_DETECTED":
                 statuses.append(("LOGO", 1.0))
             elif img is None:
-                statuses.append((None, 0.0))
+                statuses.append(("ERROR", 0.0))
             else:
                 images.append(img)
-                statuses.append(None)  # Placeholder for batch result
+                statuses.append(("PENDING", 0.0))  # Placeholder for batch result
 
         if not images:
             return statuses

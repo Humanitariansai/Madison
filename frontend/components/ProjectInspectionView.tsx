@@ -25,17 +25,17 @@ export const ProjectInspectionView: React.FC<Props> = ({ project, onBack }) => {
       <div className="flex flex-col h-full">
         {/* Back Button Area */}
         <div className="w-72 shrink-0 bg-slate-950 text-white border-b border-slate-800 p-4">
-            <button 
+            <button
                 onClick={onBack}
                 className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium"
             >
                 <ArrowLeft size={16} /> Back to Dashboard
             </button>
         </div>
-        
+
         {/* Reusing existing FileSidebar but mapping project files */}
         <div className="flex-1 min-h-0 w-full">
-            <FileSidebar 
+            <FileSidebar
                 files={project.files}
                 activeFileId={activeFileId}
                 onSelectFile={setActiveFileId}
@@ -59,7 +59,7 @@ export const ProjectInspectionView: React.FC<Props> = ({ project, onBack }) => {
         </div>
 
         <div className="flex-1 relative min-h-0">
-            <PDFComplianceViewer 
+            <PDFComplianceViewer
             pdfUrl={activeFile?.url || null}
             violations={activeFile?.violations || []}
             selectedViolationId={selectedViolationId}
@@ -70,7 +70,7 @@ export const ProjectInspectionView: React.FC<Props> = ({ project, onBack }) => {
 
       {/* 3. Right Sidebar: Inspector */}
       {activeFile && (
-        <ViolationSidebar 
+        <ViolationSidebar
           violations={activeFile.violations}
           selectedId={selectedViolationId}
           onSelect={setSelectedViolationId}
