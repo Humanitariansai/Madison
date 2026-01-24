@@ -49,12 +49,12 @@ app.add_middleware(
 )
 
 # Mount uploads directory to serve files (optional but good for debugging/frontend)
-UPLOAD_DIR = Path(__file__).parent / "uploads"
+UPLOAD_DIR = Path(__file__).parent.parent / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Persistence Setup
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent.parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 STORE_FILE = DATA_DIR / "store.json"
 
