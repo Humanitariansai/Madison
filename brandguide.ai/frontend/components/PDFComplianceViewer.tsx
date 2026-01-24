@@ -14,11 +14,11 @@ interface Props {
   onSelectViolation: (id: string) => void;
 }
 
-export const PDFComplianceViewer: React.FC<Props> = ({ 
-  pdfUrl, 
-  violations, 
+export const PDFComplianceViewer: React.FC<Props> = ({
+  pdfUrl,
+  violations,
   selectedViolationId,
-  onSelectViolation 
+  onSelectViolation
 }) => {
   const [numPages, setNumPages] = useState<number>(0);
   // ... (rest of state items are fine)
@@ -55,7 +55,7 @@ export const PDFComplianceViewer: React.FC<Props> = ({
           Viewing Mode: <span className="text-primary">Inspection</span>
         </div>
         <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
-          <button 
+          <button
             onClick={() => setScale(s => Math.max(0.5, s - 0.1))}
             className="p-1.5 hover:bg-white rounded-md transition-colors text-gray-600"
             title="Zoom Out"
@@ -63,7 +63,7 @@ export const PDFComplianceViewer: React.FC<Props> = ({
             <ZoomOut size={18} />
           </button>
           <span className="text-xs font-medium min-w-[3rem] text-center">{Math.round(scale * 100)}%</span>
-          <button 
+          <button
             onClick={() => setScale(s => Math.min(3, s + 0.1))}
             className="p-1.5 hover:bg-white rounded-md transition-colors text-gray-600"
             title="Zoom In"
@@ -72,7 +72,7 @@ export const PDFComplianceViewer: React.FC<Props> = ({
           </button>
         </div>
         <div className="flex items-center gap-2">
-            <button 
+            <button
                 onClick={() => setScale(1.0)}
                 className="text-xs font-medium text-gray-500 hover:text-primary px-2"
             >
@@ -82,7 +82,7 @@ export const PDFComplianceViewer: React.FC<Props> = ({
       </div>
 
       {/* PDF Container */}
-      <div 
+      <div
         className="flex-1 overflow-auto p-8 relative"
         ref={containerRef}
       >
@@ -119,12 +119,12 @@ export const PDFComplianceViewer: React.FC<Props> = ({
             const pageViolations = violations.filter(v => v.pageNumber === pageNumber);
 
             return (
-              <div 
-                key={`page_${pageNumber}`} 
+              <div
+                key={`page_${pageNumber}`}
                 className="relative shadow-xl bg-white"
               >
-                <Page 
-                  pageNumber={pageNumber} 
+                <Page
+                  pageNumber={pageNumber}
                   scale={scale}
                   renderTextLayer={false}
                   renderAnnotationLayer={false}
@@ -136,7 +136,7 @@ export const PDFComplianceViewer: React.FC<Props> = ({
                   {pageViolations.map((v) => {
                     const isActive = selectedViolationId === v.id;
                     const isPass = v.status === 'PASS';
-                    
+
                     return (
                       <div
                         key={v.id}
@@ -149,7 +149,7 @@ export const PDFComplianceViewer: React.FC<Props> = ({
                         }}
                         className={`
                           absolute border-2 cursor-pointer pointer-events-auto transition-all duration-200
-                          ${isActive 
+                          ${isActive
                             ? 'ring-4 z-20 ' + (isPass ? 'ring-green-400 border-green-600' : 'ring-red-400 border-red-600')
                             : 'z-10 ' + (isPass ? 'border-green-500 bg-green-500/10 hover:bg-green-500/20' : 'border-red-500 bg-red-500/10 hover:bg-red-500/20')
                           }
@@ -162,7 +162,7 @@ export const PDFComplianceViewer: React.FC<Props> = ({
                         }}
                       >
                          {/* Badge for ID */}
-                        <div 
+                        <div
                             className={`
                                 absolute -top-3 -right-3 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm
                                 ${isPass ? 'bg-green-600' : 'bg-red-600'}

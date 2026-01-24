@@ -19,3 +19,29 @@ dependencies = [
     "transformers>=4.57.3",
     "uvicorn>=0.38.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "pyre-check>=0.9.25",
+    "pyrefly>=0.49.0",
+    "pytest>=9.0.2",
+    "types-requests>=2.32.4.20260107",
+]
+
+[tool.pytest.ini_options]
+pythonpath = "src"
+testpaths = ["tests"]
+
+[tool.mypy]
+ignore_missing_imports = true
+check_untyped_defs = true
+files = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"] # Enable isort (I)
+ignore = []

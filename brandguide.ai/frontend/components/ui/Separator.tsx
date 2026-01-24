@@ -4,10 +4,10 @@ interface SeparatorProps extends React.HTMLAttributes<HTMLDivElement> {
   orientation?: 'horizontal' | 'vertical';
 }
 
-export const Separator: React.FC<SeparatorProps> = ({ 
-  className = '', 
+export const Separator: React.FC<SeparatorProps> = ({
+  className = '',
   orientation = 'horizontal',
-  ...props 
+  ...props
 }) => {
   return (
     <div

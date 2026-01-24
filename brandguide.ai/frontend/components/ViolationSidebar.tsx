@@ -40,7 +40,7 @@ export const ViolationSidebar: React.FC<Props> = ({ violations, selectedId, onSe
     return weights[b.level] - weights[a.level];
   });
 
-  // Filter out pass items if we want to show only issues? 
+  // Filter out pass items if we want to show only issues?
   // User asked to see ALL bounding boxes. But maybe sidebar should focus on issues?
   // Let's show all for now as per "view all properties" request, but maybe grouped?
   // User said "I want to be able to view all the tagged bounding boxes with filler text violation based on pass or fail."

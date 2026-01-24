@@ -10,11 +10,11 @@ interface Props {
   onUploadClick: () => void;
 }
 
-export const FileSidebar: React.FC<Props> = ({ 
-  files, 
-  activeFileId, 
-  onSelectFile, 
-  onUploadClick 
+export const FileSidebar: React.FC<Props> = ({
+  files,
+  activeFileId,
+  onSelectFile,
+  onUploadClick
 }) => {
   return (
     <div className="w-72 shrink-0 bg-slate-900 text-slate-300 flex flex-col h-full border-r border-slate-800">
@@ -23,14 +23,14 @@ export const FileSidebar: React.FC<Props> = ({
             Project Files
         </h3>
         {/* We can re-enable this button later for multi-file projects */}
-        {/* 
-        <Button 
-            variant="secondary" 
+        {/*
+        <Button
+            variant="secondary"
             className="w-full text-xs"
             onClick={onUploadClick}
         >
           <Plus size={14} /> Add Asset
-        </Button> 
+        </Button>
         */}
       </div>
 
@@ -46,8 +46,8 @@ export const FileSidebar: React.FC<Props> = ({
                 <button
                     onClick={() => onSelectFile(file.id)}
                     className={`w-full flex items-center gap-3 px-5 py-3 transition-colors text-left border-l-2
-                    ${activeFileId === file.id 
-                        ? 'bg-slate-800 border-primary text-white' 
+                    ${activeFileId === file.id
+                        ? 'bg-slate-800 border-primary text-white'
                         : 'border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
                     }`}
                 >

@@ -45,7 +45,7 @@ class BrandGuidelineGenerator:
     def generate_brand_kit(self, classified_assets, extracted_rules=None):
         """
         Input:
-            - classified_assets: list of dicts {'image': PIL_Obj, 'type': 'LOGO'/'IMAGERY'}
+            - classified_assets: list of dicts {'image': PIL_Obj, 'type': 'LOGO'}
             - extracted_rules: Optional ExtractedBrandInfo object (from PDF)
         Output: JSON Dict (Brand Bible)
         """
@@ -82,9 +82,9 @@ class BrandGuidelineGenerator:
 
             # Identify core vs secondary from the extracted list
             if extracted_rules.colors:
-                # We can store the detailed object or just the hex strings for backward compat
-                # Let's simple replace the primary_colors list with the extracted hexes for now
-                # In the future, we should update the frontend to support the detailed objects
+                # We can store the detailed object
+                # Let's simple replace the primary_colors list with the extracted hexes
+                # for now
                 extracted_hexes = [c.hex for c in extracted_rules.colors]
                 brand_kit["primary_colors"] = extracted_hexes
 
@@ -98,7 +98,9 @@ class BrandGuidelineGenerator:
                 brand_kit["logo_rules"] = [r.dict() for r in extracted_rules.logo_rules]
 
             if extracted_rules.color_usage_rules:
-                brand_kit["color_usage_rules"] = [r.dict() for r in extracted_rules.color_usage_rules]
+                brand_kit["color_usage_rules"] = [
+                    r.dict() for r in extracted_rules.color_usage_rules
+                ]
 
             if extracted_rules.forbidden_keywords:
                 brand_kit["forbidden_keywords"] = extracted_rules.forbidden_keywords

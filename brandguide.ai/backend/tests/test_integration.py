@@ -1,11 +1,11 @@
 import os
 
-from .brand_guideline_extractor import BrandGuidelineExtractor
-from .brand_guideline_generator import BrandGuidelineGenerator
+from brand_guideline_extractor import BrandGuidelineExtractor
+from brand_guideline_generator import BrandGuidelineGenerator
 
 
 def test_integration():
-    pdf_path = "/Users/ashishnevan/Downloads/brandguardai/slack_brand_guidelines_september2020.pdf"
+    pdf_path = "../../slack_brand_guidelines_september2020.pdf"
 
     if not os.path.exists(pdf_path):
         print(f"File not found: {pdf_path}")

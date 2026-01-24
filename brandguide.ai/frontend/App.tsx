@@ -34,11 +34,11 @@ export default function App() {
            const bks = await bkRes.json();
            // Map backend brand kits to frontend structure if needed
            // Backend returns full brand kit objects now from our new GET endpoint logic
-           
+
            // Backend returns array of BrandKits. We need to ensure Logos/Files are mapped correctly relative to frontend interfaces?
            // The backend returns "assets" list. Frontend uses "files" and "logos".
            // We might need to map them here similar to how we do in handleCreateBrandKit.
-           
+
            const API_BASE = "http://localhost:8000";
            const mappedBrandKits = bks.map((data: any) => {
              const uploadedFiles: UploadedFile[] = (data.assets || []).map((asset: any) => ({
@@ -47,15 +47,15 @@ export default function App() {
                 url: asset.url ? `${API_BASE}${asset.url}` : '',
                 status: 'ready',
                 violations: [],
-                uploadDate: data.date, 
+                uploadDate: data.date,
              }));
-             
+
              return {
                id: data.id,
                title: data.title,
                date: data.date,
                colors: data.colors || [],
-               
+
                // Map Rich Data
                rich_colors: data.rich_colors || [],
                typography: data.typography || [],
@@ -75,7 +75,7 @@ export default function App() {
                  }))
              }
            });
-           
+
            setBrandKits(mappedBrandKits);
         }
 
@@ -85,15 +85,15 @@ export default function App() {
            const API_BASE = "http://localhost:8000";
            const mappedProjects = projs.map((p: any) => {
              // We need to link the brandKit object.
-             // This might be tricky if brandKits aren't set yet. 
+             // This might be tricky if brandKits aren't set yet.
              // Logic will rely on matching ID later or searching the fetched bks array.
              // Since we construct mappedBrandKits in this scope, let's use it.
-             
-             // Wait, we can't easily access mappedBrandKits here if we did parallel fetch? 
+
+             // Wait, we can't easily access mappedBrandKits here if we did parallel fetch?
              // Actually we can chaining or just assume we have the ID to find it in rendering.
              // But Project interface requires `brandKit: BrandKit`.
              // We'll iterate bks.
-             
+
              // Let's defer this map inside the `then` or `await` block.
              return {
                  id: p.id,
@@ -109,7 +109,7 @@ export default function App() {
                  }))
              }
            });
-           
+
            setProjects(mappedProjects);
         }
       } catch (e) {
@@ -118,7 +118,7 @@ export default function App() {
     };
     fetchData();
   }, []);
-  
+
   // Effect to link projects to brand kits once both are loaded
   React.useEffect(() => {
     if (projects.length > 0 && brandKits.length > 0) {
@@ -133,7 +133,7 @@ export default function App() {
              }
              return p;
         });
-        
+
         // Only update if changes were made to avoid loops?
         // JSON.stringify comparison is heavy but safe for small data.
         // Or checking if any was null.
@@ -285,7 +285,7 @@ export default function App() {
       title: data.title,
       date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       colors: data.colors || [],
-      
+
       // Map Rich Data
       rich_colors: data.rich_colors || [],
       typography: data.typography || [],

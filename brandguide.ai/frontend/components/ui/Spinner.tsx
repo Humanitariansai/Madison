@@ -8,9 +8,9 @@ interface SpinnerProps {
 
 export const Spinner: React.FC<SpinnerProps> = ({ className = '', size = 24 }) => {
   return (
-    <Loader2 
-      className={`animate-spin text-primary ${className}`} 
-      size={size} 
+    <Loader2
+      className={`animate-spin text-primary ${className}`}
+      size={size}
     />
   );
 };
