@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-from typography.auditor import TypographyAuditor
+from src.typography.auditor import TypographyAuditor
 
 
 @pytest.fixture

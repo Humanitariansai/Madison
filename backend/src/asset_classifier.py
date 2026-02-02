@@ -31,12 +31,12 @@ class AssetClassifier:
                 "typography guidelines showing font weights",
                 "a document with multiple paragraphs",
             ],
-            "IMAGERY": ["a photograph", "lifestyle imagery", "stock photo of people"],
-            "TEMPLATE": [
-                "a layout design",
-                "marketing flyer",
-                "social media post template",
-            ],
+            # "IMAGERY": ["a photograph", "lifestyle imagery", "stock photo of people"],
+            # "TEMPLATE": [
+            #     "a layout design",
+            #     "marketing flyer",
+            #     "social media post template",
+            # ],
         }
 
         self.flat_labels = [

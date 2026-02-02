@@ -1,16 +1,16 @@
 ###### configuring what to type check and where to import from
 
 # check all Python files under the containing directory
-project-includes = ["**/*.py*"]
+project-includes = ["backend/src/**/*.py*", "backend/tests/**/*.py*"]
 # exclude some uninteresting files
-project-excludes = ["**/node_modules", "**/__pycache__", "**/*venv/**", "**/.[!/.]*/**"]
+project-excludes = ["**/node_modules", "**/__pycache__", "**/*venv/**", "**/.[!/.]*/**", "frontend"]
 # perform an upward search for `.gitignore`, `.ignore`, and `.git/info/exclude`, and
 # add those to `project-excludes` automatically
 use-ignore-files = true
 # import project files from "."
-search-path = [".", "backend/src"]
+search-path = ["backend/src"]
 # let Pyrefly try to guess your search path
-disable-search-path-heuristics = false
+disable-search-path-heuristics = true
 # do not include any third-party packages (except those provided by an interpreter)
 site-package-path = []
 

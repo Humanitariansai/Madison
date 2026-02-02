@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import { Button } from './ui/Button';
-import { Input } from './ui/Input';
-import { Spinner } from './ui/Spinner';
+import { Button } from "./ui/button"
+import { Input } from "./ui/input";
+import { Spinner } from './ui/spinner';
 import { FileUploader } from './FileUploader';
 import { BrandKit } from '@/types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  // NOTE: Returns a single 'file', not an array
   onSubmit: ({ name, brandKit, file }: { name: string; brandKit: BrandKit; file: File }) => void;
   isProcessing: boolean;
   brandKits: BrandKit[];
@@ -20,8 +19,6 @@ export const CreateProjectDialog: React.FC<Props> = ({ isOpen, onClose, onSubmit
   const DEFAULT_OPTION = "Create new brand kit"
   const [name, setName] = useState('');
   const [brandKit, setBrandKit] = useState<string>(brandKits?.at(0)?.title ?? DEFAULT_OPTION);
-
-  // STATE: Single file only
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   if (!isOpen) return null;
@@ -86,12 +83,10 @@ export const CreateProjectDialog: React.FC<Props> = ({ isOpen, onClose, onSubmit
                 </select>
               </div>
 
-              {/* 3. File Uploader (Single Mode) */}
+              {/* 3. File Uploader */}
               <FileUploader
                 label="Upload Asset"
-                // Adapter: Convert single state to array for the component
                 files={selectedFile ? [selectedFile] : []}
-                // Adapter: Extract first item from array to set single state
                 onFilesChange={(files) => setSelectedFile(files[0] ?? null)}
                 multiple={false}
                 accept=".pdf,application/pdf"
@@ -113,13 +108,13 @@ export const CreateProjectDialog: React.FC<Props> = ({ isOpen, onClose, onSubmit
             <Button
               disabled={!selectedFile || !name || isProcessing}
               onClick={handleSubmit}
-              isLoading={isProcessing}
             >
+              {isProcessing && <Spinner className="mr-2 h-4 w-4" />}
               Create Project
             </Button>
           )}
         </div>
       </div>
-    </div >
+    </div>
   );
 };

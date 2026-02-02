@@ -1,0 +1,19 @@
+# BE
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+*.pytest_cache
+*.ruff_cache
+*.mypy_cache
+.pyre/
+
+# Virtual environments
+.venv
+
+# binary files
+uploads/
+data/

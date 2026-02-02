@@ -1,15 +1,26 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dashboard } from './components/Dashboard';
 import { ProjectInspectionView } from './components/ProjectInspectionView';
 import { CreateProjectDialog } from './components/CreateProjectDialog';
-import { BrandKit, Project, UploadedFile, InspectionResult } from './types';
+import { BrandKit, Project, ApiBrandKitResponse, ApiProjectResponse } from './types';
 import { CreateBrandKitDialog } from './components/CreateBrandKitDialog';
 import { BrandKitInspectionView } from './components/BrandKitInspectionView';
+import { API_BASE } from './lib/api';
+import { mapApiBrandKitToFrontend, mapApiProjectToFrontend } from './lib/mappers';
 
-
+// Layout Imports
+import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { AppSidebar } from '@/components/AppSidebar';
+import { Separator } from '@/components/ui/separator';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { Button } from '@/components/ui/button';
+import { Bell, Edit2, Upload, MoreVertical } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 export default function App() {
-  const [view, setView] = useState<'dashboard' | 'ProjectInspection' | 'brandKitInspection'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'projectInspection' | 'brandKitInspection'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'projects' | 'kits' | 'settings'>('dashboard');
+
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
 
@@ -22,95 +33,25 @@ export default function App() {
   const [changeView, setChangeView] = useState<boolean>(true);
 
   // Initialize data on mount
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchData = async () => {
       try {
         const [bkRes, projRes] = await Promise.all([
-          fetch('http://localhost:8000/brandkits'),
-          fetch('http://localhost:8000/projects')
+          fetch(`${API_BASE}/brandkits`),
+          fetch(`${API_BASE}/projects?expand=brandKit`)
         ]);
 
         if (bkRes.ok) {
-           const bks = await bkRes.json();
-           // Map backend brand kits to frontend structure if needed
-           // Backend returns full brand kit objects now from our new GET endpoint logic
-
-           // Backend returns array of BrandKits. We need to ensure Logos/Files are mapped correctly relative to frontend interfaces?
-           // The backend returns "assets" list. Frontend uses "files" and "logos".
-           // We might need to map them here similar to how we do in handleCreateBrandKit.
-
-           const API_BASE = "http://localhost:8000";
-           const mappedBrandKits = bks.map((data: any) => {
-             const uploadedFiles: UploadedFile[] = (data.assets || []).map((asset: any) => ({
-                id: asset.id,
-                name: asset.filename,
-                url: asset.url ? `${API_BASE}${asset.url}` : '',
-                status: 'ready',
-                violations: [],
-                uploadDate: data.date,
-             }));
-
-             return {
-               id: data.id,
-               title: data.title,
-               date: data.date,
-               colors: data.colors || [],
-
-               // Map Rich Data
-               rich_colors: data.rich_colors || [],
-               typography: data.typography || [],
-               logo_rules: data.logo_rules || [],
-               forbidden_keywords: data.forbidden_keywords || [],
-               brand_voice_attributes: data.brand_voice_attributes || [],
-
-               imagery: [],
-               files: uploadedFiles,
-               logos: (data.assets || [])
-                 .filter((f: any) => f.category === "LOGO")
-                 .map((f: any) => ({
-                   id: f.id,
-                   name: f.filename,
-                   url: f.url ? `${API_BASE}${f.url}` : '',
-                   variant: 'Primary'
-                 }))
-             }
-           });
-
-           setBrandKits(mappedBrandKits);
+          const bks: ApiBrandKitResponse[] = await bkRes.json();
+          const mappedBrandKits = bks.map(data => mapApiBrandKitToFrontend(data, API_BASE));
+          setBrandKits(mappedBrandKits);
         }
 
         if (projRes.ok) {
-           const projs = await projRes.json();
-           // Map backend projects
-           const API_BASE = "http://localhost:8000";
-           const mappedProjects = projs.map((p: any) => {
-             // We need to link the brandKit object.
-             // This might be tricky if brandKits aren't set yet.
-             // Logic will rely on matching ID later or searching the fetched bks array.
-             // Since we construct mappedBrandKits in this scope, let's use it.
+          const projs: ApiProjectResponse[] = await projRes.json();
+          const mappedProjects = projs.map(p => mapApiProjectToFrontend(p, API_BASE));
 
-             // Wait, we can't easily access mappedBrandKits here if we did parallel fetch?
-             // Actually we can chaining or just assume we have the ID to find it in rendering.
-             // But Project interface requires `brandKit: BrandKit`.
-             // We'll iterate bks.
-
-             // Let's defer this map inside the `then` or `await` block.
-             return {
-                 id: p.id,
-                 title: p.title,
-                 date: p.date,
-                 status: p.status,
-                 score: p.score,
-                 brandKit: null, // Placeholder, we'll fix below
-                 brandKitId: p.brandKitId, // Temp field to help matching
-                 files: (p.files || []).map((f: any) => ({
-                    ...f,
-                    url: f.url ? `${API_BASE}${f.url}` : ''
-                 }))
-             }
-           });
-
-           setProjects(mappedProjects);
+          setProjects(mappedProjects);
         }
       } catch (e) {
         console.error("Failed to fetch initial data:", e);
@@ -118,54 +59,6 @@ export default function App() {
     };
     fetchData();
   }, []);
-
-  // Effect to link projects to brand kits once both are loaded
-  React.useEffect(() => {
-    if (projects.length > 0 && brandKits.length > 0) {
-        // If projects have null brandKit but valid brandKitId
-        const updated = projects.map(p => {
-             if (p.brandKit) return p; // Already linked
-             // @ts-ignore - access temp field
-             const bkId = p.brandKitId;
-             if (bkId) {
-                 const foundBk = brandKits.find(bk => bk.id === bkId);
-                 if (foundBk) return { ...p, brandKit: foundBk };
-             }
-             return p;
-        });
-
-        // Only update if changes were made to avoid loops?
-        // JSON.stringify comparison is heavy but safe for small data.
-        // Or checking if any was null.
-        if (projects.some(p => !p.brandKit && (p as any).brandKitId)) {
-            setProjects(updated);
-        }
-    }
-  }, [brandKits, projects.length]); // Re-run when lists change
-
-  // Helper to generate mock violations for new uploads
-  const generateMockViolations = (fileId: string): InspectionResult[] => {
-    return [
-      {
-        id: `v_${fileId}_1`,
-        pageNumber: 1,
-        type: 'FONT',
-        message: "Incorrect font family. Expected 'Inter', found 'Arial'.",
-        level: 'CRITICAL',
-        status: 'FAIL',
-        coordinates: { x: 50, y: 100, width: 200, height: 40 }
-      },
-      {
-        id: `v_${fileId}_2`,
-        pageNumber: 1,
-        type: 'LOGO',
-        message: "Logo safety margin violated (15px < 20px).",
-        level: 'MEDIUM',
-        status: 'FAIL',
-        coordinates: { x: 400, y: 50, width: 100, height: 80 }
-      },
-    ];
-  };
 
   const handleCreateProject = async ({ name, brandKit, file }: { name: string, brandKit: BrandKit, file: File }) => {
     setIsProcessing(true);
@@ -179,7 +72,7 @@ export default function App() {
       formData.append('brand_kit_id', brandKit.id);
       formData.append('file', file);
 
-      const response = await fetch('http://localhost:8000/project/audit', {
+      const response = await fetch(`${API_BASE}/project/audit`, {
         method: 'POST',
         body: formData,
       });
@@ -189,32 +82,16 @@ export default function App() {
         throw new Error(error.detail || 'Audit failed');
       }
 
-      const data = await response.json();
-      console.log("Audit Response Data:", data); // Requested Debug Log
+      const data: ApiProjectResponse = await response.json();
+      console.log("Audit Response Data:", data);
 
-      const newFile: UploadedFile = {
-        id: crypto.randomUUID(),
-        name: file.name,
-        url: URL.createObjectURL(file), // Only for preview
-        status: 'ready',
-        violations: data.violations, // Contains both PASS and FAIL results now
-        uploadDate: new Date().toLocaleDateString()
-      };
-
-      const newProject: Project = {
-        id: data.projectId,
-        title: data.title,
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        status: data.status,
-        score: data.score,
-        brandKit: brandKit,
-        files: [newFile]
-      };
+      const newProject = mapApiProjectToFrontend(data, API_BASE);
 
       setProjects(prev => [newProject, ...prev]);
       setIsProjectCreateDialogOpen(false);
       setActiveProjectId(newProject.id);
-      setView('ProjectInspection');
+      setView('projectInspection');
+      setActiveTab('projects');
 
     } catch (error) {
       console.error('Failed to audit project:', error);
@@ -225,16 +102,9 @@ export default function App() {
   };
 
   const handleOpenProject = (id: string) => {
-    // If opening a mock project with no files, let's inject a dummy file/alert for demo purposes
-    // In a real app, we would fetch the project details
-    const project = projects.find(p => p.id === id);
-    if (project && project.files.length === 0) {
-      // Just for demo continuity, add a mock file if empty
-      alert("This demo project has no PDF attached. Please create a new project to see the viewer in action.");
-      return;
-    }
     setActiveProjectId(id);
-    setView('ProjectInspection');
+    setView('projectInspection');
+    setActiveTab('projects');
   };
 
   const activeProject = projects.find(p => p.id === activeProjectId);
@@ -254,7 +124,7 @@ export default function App() {
         formData.append('files', file);
       });
 
-      const response = await fetch('http://localhost:8000/brandkit', {
+      const response = await fetch(`${API_BASE}/brandkit`, {
         method: 'POST',
         body: formData,
         // Don't set Content-Type header - browser sets it with boundary
@@ -264,55 +134,19 @@ export default function App() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-    const data = await response.json();
-    // Response shape: { id, title, assets: [{ id, filename, category, path, url }] }
+      const data = await response.json();
+      const apiResponse: ApiBrandKitResponse = data;
+      const newBrandKit = mapApiBrandKitToFrontend(apiResponse, API_BASE);
 
-    // Map response to UploadedFiles with classification info
-    // We use the backend URL for the files now
-    const API_BASE = "http://localhost:8000";
+      setBrandKits(prev => [newBrandKit, ...prev]);
+      setIsBrandKitCreateDialogOpen(false);
 
-    const newUploadedFiles: UploadedFile[] = data.assets.map((asset: any) => ({
-      id: asset.id, // Use backend ID
-      name: asset.filename,
-      url: asset.url ? `${API_BASE}${asset.url}` : '', // Use backend served URL
-      status: 'ready',
-      violations: [],
-      uploadDate: new Date().toLocaleDateString(),
-    }));
-
-    const newBrandKit: BrandKit = {
-      id: data.id, // Use backend ID
-      title: data.title,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      colors: data.colors || [],
-
-      // Map Rich Data
-      rich_colors: data.rich_colors || [],
-      typography: data.typography || [],
-      logo_rules: data.logo_rules || [],
-      forbidden_keywords: data.forbidden_keywords || [],
-      brand_voice_attributes: data.brand_voice_attributes || [],
-
-      imagery: [],
-      files: newUploadedFiles,
-      logos: data.assets
-        .filter((f: any) => f.category === "LOGO")
-        .map((f: any) => ({
-          id: f.id,
-          name: f.filename,
-          url: f.url ? `${API_BASE}${f.url}` : '',
-          variant: 'Primary' // Default
-        }))
-    };
-
-    setBrandKits(prev => [newBrandKit, ...prev]);
-    setIsBrandKitCreateDialogOpen(false);
-
-    if (changeView) {
-      setActiveBrandKitId(newBrandKit.id);
-      setView('brandKitInspection');
-    }
-    setChangeView(true);
+      if (changeView) {
+        setActiveBrandKitId(newBrandKit.id);
+        setView('brandKitInspection');
+        setActiveTab('kits');
+      }
+      setChangeView(true);
 
     } catch (error) {
       console.error('Failed to create brand kit:', error);
@@ -323,50 +157,164 @@ export default function App() {
   };
 
   const handleOpenBrandKit = (id: string) => {
-    // If opening a mock project with no files, let's inject a dummy file/alert for demo purposes
-    // In a real app, we would fetch the project details
     console.log("Opening brandkit with id:", id)
-    const brandKit = brandKits.find(b => b.id === id);
     setActiveBrandKitId(id);
     setView('brandKitInspection');
+    setActiveTab('kits');
   };
 
   const activeBrandKit = brandKits.find(b => b.id === activeBrandKitId);
 
-  if (view === 'ProjectInspection' && activeProject) {
-    return (
-      <ProjectInspectionView
-        project={activeProject}
-        onBack={() => setView('dashboard')}
-      />
-    );
-  }
+  // Helper to get sidebar active tab based on current view
+  const currentSidebarTab = view === 'projectInspection' ? 'projects' :
+    view === 'brandKitInspection' ? 'kits' : activeTab;
 
-  if (view === 'brandKitInspection' && activeBrandKit) {
-    return (
-      <BrandKitInspectionView
-        brandKit={activeBrandKit}
-        onBack={() => setView('dashboard')}
-      />
-    );
-  }
+  // Tab titles for dashboard
+  const tabTitles = {
+    dashboard: 'Dashboard',
+    projects: 'Projects',
+    kits: 'Brand Kits',
+    settings: 'Settings'
+  };
 
   return (
-    <>
-      <Dashboard
+    <SidebarProvider className="h-screen overflow-hidden">
+      <AppSidebar
+        activeTab={currentSidebarTab}
+        setActiveTab={(tab) => {
+          setActiveTab(tab);
+          setView('dashboard'); // Always go back to dashboard/list view when clicking sidebar nav
+        }}
         projects={projects}
-        onCreateProject={() => {
-          console.log("Triggered onCreateProject")
-          setIsProjectCreateDialogOpen(true)
-        }}
-        onOpenProject={handleOpenProject}
         brandKits={brandKits}
-        onCreateBrandKit={() => {
-          console.log("Triggered onCreateBrandKit")
-          setIsBrandKitCreateDialogOpen(true)
-        }}
-        onOpenBrandKit={handleOpenBrandKit}
       />
+      <SidebarInset className="flex flex-col overflow-hidden">
+        {/* Global Header inside Inset */}
+        <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+          <div className="flex items-center gap-2">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                {view === 'dashboard' && (
+                  <BreadcrumbItem>
+                    <BreadcrumbPage className="capitalize font-semibold text-lg">{tabTitles[activeTab]}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                )}
+
+                {view === 'projectInspection' && activeProject && (
+                  <>
+                    <BreadcrumbItem>
+                      <BreadcrumbLink
+                        className="cursor-pointer hover:text-foreground transition-colors"
+                        onClick={() => {
+                          setView('dashboard');
+                          setActiveTab('projects');
+                        }}
+                      >
+                        Projects
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage className="font-medium">{activeProject.title}</BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </>
+                )}
+
+                {view === 'brandKitInspection' && activeBrandKit && (
+                  <>
+                    <BreadcrumbItem>
+                      <BreadcrumbLink
+                        className="cursor-pointer hover:text-foreground transition-colors"
+                        onClick={() => {
+                          setView('dashboard');
+                          setActiveTab('kits');
+                        }}
+                      >
+                        Brand Kits
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage className="font-medium">{activeBrandKit.title}</BreadcrumbPage>
+                    </BreadcrumbItem>
+                    {view === 'brandKitInspection' && (
+                      <Badge variant="outline" className="ml-2 text-primary border-primary/20 bg-primary/5 hidden sm:inline-flex">Active</Badge>
+                    )}
+                  </>
+                )}
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            {view === 'brandKitInspection' ? (
+              <>
+                <Button variant="outline" size="sm" className="hidden sm:flex h-8 gap-1">
+                  <Edit2 size={14} />
+                  <span className="whitespace-nowrap">Edit Rules</span>
+                </Button>
+                <Button size="sm" className="hidden sm:flex h-8 gap-1">
+                  <Upload size={14} />
+                  <span className="whitespace-nowrap">Add Assets</span>
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <MoreVertical size={16} />
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="icon" className="bg-background">
+                <Bell size={16} />
+              </Button>
+            )}
+          </div>
+        </header>
+
+        {/* Main Content Area with Inset and Rounded Borders */}
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden">
+          <div className="flex-1 rounded-xl bg-muted/50 border overflow-hidden flex flex-col min-h-0 shadow-sm">
+            {view === 'dashboard' && (
+              <Dashboard
+                activeTab={activeTab} // Use the lifted state
+                projects={projects}
+                onCreateProject={() => {
+                  console.log("Triggered onCreateProject")
+                  setIsProjectCreateDialogOpen(true)
+                }}
+                onOpenProject={handleOpenProject}
+                brandKits={brandKits}
+                onCreateBrandKit={() => {
+                  console.log("Triggered onCreateBrandKit")
+                  setIsBrandKitCreateDialogOpen(true)
+                }}
+                onOpenBrandKit={handleOpenBrandKit}
+              />
+            )}
+
+            {view === 'projectInspection' && activeProject && (
+              <ProjectInspectionView
+                project={activeProject}
+                onBack={() => {
+                  setView('dashboard');
+                  setActiveTab('projects');
+                }}
+              />
+            )}
+
+            {view === 'brandKitInspection' && activeBrandKit && (
+              <BrandKitInspectionView
+                brandKit={activeBrandKit}
+                onBack={() => {
+                  setView('dashboard');
+                  setActiveTab('kits');
+                }}
+              />
+            )}
+          </div>
+        </div>
+      </SidebarInset>
+
       <CreateProjectDialog
         isOpen={isProjectCreateDialogOpen}
         onCreateBrandKit={() => {
@@ -385,6 +333,6 @@ export default function App() {
         onSubmit={handleCreateBrandKit}
         isProcessing={isProcessing}
       />
-    </>
+    </SidebarProvider>
   );
 }

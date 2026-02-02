@@ -1,7 +1,7 @@
 import os
 
-from brand_guideline_extractor import BrandGuidelineExtractor
-from brand_guideline_generator import BrandGuidelineGenerator
+from src.brand_guideline_extractor import BrandGuidelineExtractor
+from src.brand_guideline_generator import BrandGuidelineGenerator
 
 
 def test_integration():

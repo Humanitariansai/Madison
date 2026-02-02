@@ -1,4 +1,4 @@
-from brand_guideline_extractor import BrandGuidelineExtractor
+from src.brand_guideline_extractor import BrandGuidelineExtractor
 
 # Mock the environment to use the user's setup if needed,
 # relying on existing .env or environment variables.

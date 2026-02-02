@@ -4,24 +4,14 @@ import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image, ImageStat
 from sklearn.cluster import KMeans
-from transformers import CLIPModel, CLIPProcessor, pipeline
+
+from .services.ml_service import ml_service
 
 
 class IntegratedBrandAuditor:
     def __init__(self, brand_bible, reference_assets):
         self.bible = brand_bible
-
-        # --- 1. SETUP AI MODELS ---
-        print("Loading AI Models (CLIP, NLP, SIFT)...")
-        # pyrefly: ignore [missing-attribute]
-        self.sift = cv2.SIFT_create()
-        self.nlp_pipe = pipeline(
-            "zero-shot-classification", model="facebook/bart-large-mnli"
-        )
-        self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-        self.clip_processor = CLIPProcessor.from_pretrained(
-            "openai/clip-vit-base-patch32"
-        )
+        self.ml = ml_service  # Use Singleton
 
         # --- 2. INDEX LOGO VARIANTS ---
         # We index every single logo file provided in the training assets
@@ -48,7 +38,8 @@ class IntegratedBrandAuditor:
             if len(img_cv.shape) == 3:
                 img_cv = cv2.cvtColor(img_cv, cv2.COLOR_RGB2GRAY)
 
-            kp, des = self.sift.detectAndCompute(img_cv, None)
+            # Use singleton SIFT
+            kp, des = self.ml.sift.detectAndCompute(img_cv, None)
 
             if des is not None:
                 w, h = pil_img.size
@@ -60,7 +51,7 @@ class IntegratedBrandAuditor:
                         "des": des,
                         "size": (w, h),
                         "aspect_ratio": w / h,
-                        "original_image": pil_img,  # Keep for color comparison
+                        "original_image": pil_img,
                     }
                 )
 
@@ -70,7 +61,7 @@ class IntegratedBrandAuditor:
     def _find_logos(self, page_cv_gray):
         found_instances = []
 
-        kp_page, des_page = self.sift.detectAndCompute(page_cv_gray, None)
+        kp_page, des_page = self.ml.sift.detectAndCompute(page_cv_gray, None)
         if des_page is None:
             return []
 
@@ -201,13 +192,19 @@ class IntegratedBrandAuditor:
         return found_imgs
 
     def _check_imagery_vibe(self, img_crop):
-        targets = f"a photo that is {', '.join(self.bible['frequent_keywords'])}"
+        targets = "a photo that is " + ", ".join(
+            self.bible.get("brandvoice", {}).get("frequent_keywords", [])
+        )
         negative = "cartoon, blurry, text overlay, screenshot, low resolution"
 
-        inputs = self.clip_processor(
-            text=[targets, negative], images=img_crop, return_tensors="pt", padding=True
+        inputs = self.ml.clip_processor(
+            # pyrefly: ignore [bad-argument-type]
+            text=[targets, negative],
+            images=img_crop,
+            return_tensors="pt",
+            padding=True,
         )
-        probs = self.clip_model(**inputs).logits_per_image.softmax(dim=1)
+        probs = self.ml.clip_model(**inputs).logits_per_image.softmax(dim=1)
         score = probs[0][0].item()
 
         return "PASS" if score > 0.6 else "FAIL", f"Vibe Score: {score:.2%}"
@@ -219,7 +216,7 @@ class IntegratedBrandAuditor:
         if len(text.split()) < 10:
             return None, None
         labels = self.bible["brand_voice_attributes"] + ["spammy", "aggressive"]
-        res = self.nlp_pipe(text, labels)
+        res = self.ml.nlp_pipe(text, labels)
         # pyrefly: ignore [bad-index]
         top = res["labels"][0]
         return "PASS" if top in self.bible[
@@ -251,19 +248,14 @@ class IntegratedBrandAuditor:
         Compare dominant page colors against the Brand Kit's allowed colors.
         Returns: status (PASS/FAIL), message
         """
-        # 1. Get Allowed Colors from Brand Kit
-        # Priority: rich_colors matches (best) -> primary_colors (hex)
+        # 1. Get Allowed Colors from Brand Kit (unified colors field)
         allowed_rgbs = []
 
-        if self.bible.get("rich_colors"):
-            # Extract RGBs from rich data
-            for c in self.bible["rich_colors"]:
+        if self.bible.get("colors"):
+            # Extract RGBs from unified colors data
+            for c in self.bible["colors"]:
+                # Try RGB first (if available from PDF)
                 if "rgb" in c and c["rgb"]:
-                    # Parse "74-21-75" or similar format if needed?
-                    # The extractor might return it as string or tuple.
-                    # Let's assume the extractor returns sanitized strings or we verify.
-                    # Actually, let's look at api.py/extractor structure.
-                    # For now, let's try to handle the string "R-G-B" or [R, G, B]
                     try:
                         val = c["rgb"]
                         if isinstance(val, str):
@@ -274,16 +266,14 @@ class IntegratedBrandAuditor:
                             allowed_rgbs.append(val)
                     except Exception:
                         pass
-
-        # Fallback to Hex if no RGBs found (or added as well)
-        if not allowed_rgbs and self.bible.get("primary_colors"):
-            for hex_code in self.bible["primary_colors"]:
-                h = hex_code.lstrip("#")
-                try:
-                    rgb = tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
-                    allowed_rgbs.append(rgb)
-                except Exception:
-                    pass
+                # Fall back to hex (always present)
+                elif "hex" in c and c["hex"]:
+                    h = c["hex"].lstrip("#")
+                    try:
+                        rgb = tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
+                        allowed_rgbs.append(rgb)
+                    except Exception:
+                        pass
 
         if not allowed_rgbs:
             return "WARNING", "No Brand Colors defined in Kit."
@@ -319,7 +309,7 @@ class IntegratedBrandAuditor:
 
         return "PASS", "Palette compliant"
 
-    def _audit_background_layer(self, page_cv, bg_mask, rich_colors, primary_colors):
+    def _audit_background_layer(self, page_cv, bg_mask, colors):
         """
         Audits background pixels using Histogram Coverage (Texture Safe).
         """
@@ -339,8 +329,8 @@ class IntegratedBrandAuditor:
 
         # 2. Prepare Allowed Colors
         allowed_rgbs = []
-        if rich_colors:
-            for rc in rich_colors:
+        if colors:
+            for rc in colors:
                 try:
                     if rc.get("rgb"):
                         # Clean format "R, G, B" or "R-G-B"
@@ -348,8 +338,12 @@ class IntegratedBrandAuditor:
                         allowed_rgbs.append([float(p) for p in val.split()])
                 except Exception:
                     pass
-        if not allowed_rgbs and primary_colors:
-            for hex_code in primary_colors:
+        # Fallback: if no RGB data, convert hex to RGB
+        if not allowed_rgbs and colors:
+            for c in colors:
+                hex_code = c.get("hex")
+                if not hex_code:
+                    continue
                 try:
                     h = hex_code.lstrip("#")
                     allowed_rgbs.append(tuple(int(h[i : i + 2], 16) for i in (0, 2, 4)))
@@ -555,15 +549,15 @@ class IntegratedBrandAuditor:
             logo_boxes_for_mask.append([x, y, w, h])
 
         # 2. IMAGERY (Generic, masking logos)
-        img_boxes = self._find_imagery(page_gray, logo_boxes_for_mask)
-        for box in img_boxes:
-            x, y, w, h = box
-            crop = page_pil.crop((x, y, x + w, y + h))
-            status, metric = self._check_imagery_vibe(crop)
+        # img_boxes = self._find_imagery(page_gray, logo_boxes_for_mask)
+        # for box in img_boxes:
+        #     x, y, w, h = box
+        #     crop = page_pil.crop((x, y, x + w, y + h))
+        #     status, metric = self._check_imagery_vibe(crop)
 
-            page_results.append(
-                {"type": "IMAGERY", "bbox": box, "status": status, "metric": metric}
-            )
+        #     page_results.append(
+        #         {"type": "IMAGERY", "bbox": box, "status": status, "metric": metric}
+        #     )
 
         # 3. TEXT & UNIFIED SMART MASK
         # Use image_to_data to get bounding boxes for text masking + context awareness
@@ -624,8 +618,7 @@ class IntegratedBrandAuditor:
             bg_status, bg_msg = self._audit_background_layer(
                 page_cv,
                 mask_bg,
-                self.bible.get("rich_colors"),
-                self.bible.get("primary_colors"),
+                self.bible.get("colors"),
             )
 
             page_results.append(

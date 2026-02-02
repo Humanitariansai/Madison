@@ -1,34 +1,52 @@
-import datetime
-import json
+import asyncio
 import os
 import shutil
 import uuid
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pdf2image import convert_from_bytes
 from PIL import Image
 from pydantic import BaseModel
+from sqlalchemy.orm import selectinload
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .asset_classifier import AssetClassifier
 from .brand_auditor import IntegratedBrandAuditor
 from .brand_guideline_extractor import BrandGuidelineExtractor
 from .brand_guideline_generator import BrandGuidelineGenerator
+from .database import get_session, init_db
+from .middleware import ProcessTimeMiddleware
+from .models import (
+    Asset,
+    BrandColor,
+    BrandFont,
+    BrandKit,
+    BrandKitRead,
+    Project,
+    ProjectFile,
+    ProjectFileRead,
+    ProjectRead,
+)
 from .typography.auditor import TypographyAuditor
 from .typography.siamese_manager import SiameseManager
+from .utils import downsample_image
 
 
 class InspectionResult(BaseModel):
     id: str
     pageNumber: int
-    type: str  # 'COLOR', 'FONT', 'LOGO', etc.
+    type: str
     message: str
-    level: str  # 'CRITICAL', 'MEDIUM', 'PASS'
-    status: str  # 'FAIL', 'PASS'
-    coordinates: dict  # {x, y, width, height}
+    level: str
+    status: str
+    coordinates: dict
 
 
 class AuditResponse(BaseModel):
@@ -36,13 +54,22 @@ class AuditResponse(BaseModel):
     title: str
     violations: List[InspectionResult]
     score: int
-    status: str  # 'COMPLIANT', 'CRITICAL', 'ACTION_REQUIRED'
+    status: str
 
 
 # Initialize Extractor
 guideline_extractor = BrandGuidelineExtractor()
 
-app = FastAPI(title="BrandGuideAI")
+
+# Lifespan event to init DB
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure DB tables exist
+    await init_db()
+    yield
+
+
+app = FastAPI(title="BrandGuideAI", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,270 +79,213 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount uploads directory to serve files (optional but good for debugging/frontend)
+app.add_middleware(ProcessTimeMiddleware)
+
+# Mount uploads directory
 UPLOAD_DIR = Path(__file__).parent.parent / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-# Persistence Setup
-DATA_DIR = Path(__file__).parent.parent / "data"
-DATA_DIR.mkdir(exist_ok=True)
-STORE_FILE = DATA_DIR / "store.json"
-
-# In-memory store
-brand_kit_store: dict = {}
-project_store: dict = {}  # New store for projects
-
-
-def load_store():
-    global brand_kit_store, project_store
-    if STORE_FILE.exists():
-        try:
-            with open(STORE_FILE, "r") as f:
-                data = json.load(f)
-                brand_kit_store = data.get("brand_kits", {})
-                project_store = data.get("projects", {})
-            print(
-                f"Loaded {len(brand_kit_store)} brand kits"
-                f" and {len(project_store)} projects from disk."
-            )
-        except Exception as e:
-            print(f"Failed to load store: {e}")
-
-
-def save_store():
-    try:
-        data = {"brand_kits": brand_kit_store, "projects": project_store}
-        with open(STORE_FILE, "w") as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        print(f"Failed to save store: {e}")
-
-
-# Load on startup
-load_store()
-
 classifier = AssetClassifier()
 siamese_manager = SiameseManager()
-# classifier (loaded globally or on demand)
 
 
 @app.post("/brandkit")
 async def create_brandkit(
-    id: str = Form(...), title: str = Form(...), files: List[UploadFile] = File(...)
+    id: str = Form(...),
+    title: str = Form(...),
+    files: List[UploadFile] = File(...),
+    session: AsyncSession = Depends(get_session),
 ):
     """Create brand kit and store classified assets."""
     assets_for_learning = []
-    stored_assets = []
 
     # Create a directory for this brand kit
     kit_dir = UPLOAD_DIR / id
     kit_dir.mkdir(parents=True, exist_ok=True)
 
     print("Phase 1: Learning from Assets...")
+    extracted_rules = None
 
-    extracted_rules = None  # [NEW] to hold PDF data
+    # 1. Create the BrandKit Parent
+    brand_kit = BrandKit(
+        id=id,
+        brand_name=title,  # Placeholder
+        title=title,
+        created_at=datetime.now(timezone.utc),
+        colors=[],  # Init empty
+        typography=[],  # Renamed from fonts
+        assets=[],
+        projects=[],
+    )
+    session.add(brand_kit)
 
+    # 2. Process Files & Create Asset Records
     for f in files:
         if not f.filename:
             continue
         # Save file to disk
-        file_path = kit_dir / f.filename if kit_dir else Path(f.filename)
+        file_path = kit_dir / f.filename
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(f.file, buffer)
 
-        # [NEW] Check for Guidelines PDF
-        if f.filename and f.filename.lower().endswith(".pdf"):
+        # Check for Guidelines PDF
+        if f.filename.lower().endswith(".pdf"):
             print(f"Detected potential Brand Guidelines: {f.filename}")
             try:
-                # Attempt to extract rules
-                print(">>> Running Brand Guideline Extractor...")
                 extracted_rules = guideline_extractor.extract_guidelines(str(file_path))
-                print(">>> Extraction Complete.")
             except Exception as e:
                 print(f"Failed to extract guidelines from PDF: {e}")
-
             category = "GUIDELINES"
             confidence = 1.0
 
-        # [NEW] Check for Font Files
-        elif f.filename and f.filename.lower().endswith((".ttf", ".otf")):
+        # Check for Font Files
+        elif f.filename.lower().endswith((".ttf", ".otf")):
             print(f"Detected Font File: {f.filename}")
             try:
-                print(">>> Ingesting Font for Siamese Network...")
                 ingest_res = siamese_manager.ingest_new_font(str(file_path), f.filename)
                 if ingest_res["success"]:
                     siamese_manager.save_embeddings(
                         id, f.filename, ingest_res["embeddings"]
                     )
-                    print(f"Font {f.filename} ingested successfully.")
                 else:
                     print(f"Font ingestion failed: {ingest_res.get('error')}")
             except Exception as e:
                 print(f"Failed to ingest font: {e}")
-
             category = "FONT"
             confidence = 1.0
 
         else:
-            # Standard Classification
             category, confidence = classifier.predict_type(str(file_path))
 
-        print(f"Result: {category} ({confidence:.2%})")
-        print("-" * 30)
+        # Create ASSET record
+        asset = Asset(
+            brand_kit_id=id,
+            category=category,
+            filename=f.filename,
+            path=str(file_path),
+            url=f"/uploads/{id}/{f.filename}",
+        )
+        session.add(asset)
 
-        # Asset object for internal logic
-        # We need to reload the image for the generator if it expects PIL images
+        # Add to learning list
         try:
-            # Only attempt to open as image if it's likely an image
             if category in ["LOGO", "IMAGERY", "TEMPLATE"]:
                 img = Image.open(file_path).convert("RGB")
                 assets_for_learning.append({"image": img, "type": category})
-            else:
-                pass
         except Exception as e:
-            print(
-                f"Skipping {f.filename} for guideline generation, "
-                f"(not a readable image): {e}"
-            )
+            print(f"Skipping {f.filename}: {e}")
 
-        stored_assets.append(
-            {
-                "id": str(uuid.uuid4()),
-                "filename": f.filename,
-                "category": category,
-                "path": str(file_path),
-                "url": f"/uploads/{id}/{f.filename}",
-            }
-        )
-
-    # ==========================================
-    # 2. GENERATE GUIDELINES
-    # ==========================================
+    # 3. Generate Guidelines (Rules)
     generator = BrandGuidelineGenerator()
-
-    # Pass the extracted_rules to the generator [NEW]
-    brand_kit = generator.generate_brand_kit(
+    brand_kit_dict = generator.generate_brand_kit(
         assets_for_learning, extracted_rules=extracted_rules
     )
 
-    print("brand_kit \n", brand_kit)
-    if not hasattr(brand_kit, "color_tolerance"):
-        print("adding color_tolerance key into brand_kit")
-        # pyrefly: ignore [bad-typed-dict-key]
-        brand_kit["color_tolerance"] = 50
+    # Update BrandKit Metadata
+    brand_kit.brand_name = brand_kit_dict.get("brand_name", "Unknown")
+    brand_kit.color_tolerance = brand_kit_dict.get("color_tolerance", 50)
+    brand_kit.brand_voice = brand_kit_dict.get("brand_voice", {})
+    brand_kit.logo_rules = brand_kit_dict.get("logo", {})
 
-    if not hasattr(brand_kit, "frequent_keywords"):
-        print("adding frequent_keywords key into brand_kit")
-        brand_kit["frequent_keywords"] = [
-            "minimalist",
-            "technology",
-            "humanitarian",
-            "clean",
-        ]
+    # 4. Create Color Records
+    # pyrefly: ignore [not-iterable]
+    for c in brand_kit_dict.get("colors", []):
+        color = BrandColor(
+            brand_kit_id=id,
+            # pyrefly: ignore [missing-attribute]
+            hex=c.get("hex", "#000000"),
+            # pyrefly: ignore [missing-attribute]
+            name=c.get("name", "Unknown"),
+            # pyrefly: ignore [missing-attribute]
+            rgb=c.get("rgb"),
+            # pyrefly: ignore [missing-attribute]
+            cmyk=c.get("cmyk"),
+            # pyrefly: ignore [missing-attribute]
+            usage=c.get("usage", "ACCENT"),
+            # pyrefly: ignore [missing-attribute]
+            text_color_rule=c.get("text_color_rule"),
+        )
+        session.add(color)
 
-    # Merge our stored assets into the brand_kit dict
-    brand_kit["id"] = id
-    brand_kit["title"] = title
-    brand_kit["assets"] = stored_assets
+    # 5. Create Font Records
+    # pyrefly: ignore [not-iterable]
+    for t in brand_kit_dict.get("typography", []):
+        font = BrandFont(
+            brand_kit_id=id,
+            # pyrefly: ignore [missing-attribute]
+            family_name=t.get("family", "Unknown"),
+            # pyrefly: ignore [missing-attribute]
+            use_case=t.get("use_case", "BODY"),
+        )
+        session.add(font)
 
-    # [NEW] Add fonts list
-    brand_kit["fonts"] = [
-        x["filename"] for x in stored_assets if x["category"] == "FONT"
-    ]
+    await session.commit()
 
-    brand_kit["date"] = datetime.datetime.now().strftime("%b %d, %Y")
+    query = (
+        select(BrandKit)
+        .where(BrandKit.id == id)
+        .options(
+            # pyrefly: ignore [bad-argument-type]
+            selectinload(BrandKit.assets),
+            # pyrefly: ignore [bad-argument-type]
+            selectinload(BrandKit.colors),
+            # pyrefly: ignore [bad-argument-type]
+            selectinload(BrandKit.typography),
+        )
+    )
+    result = await session.exec(query)
+    brand_kit = result.first()
 
-    brand_kit_store[id] = brand_kit
-    save_store()  # PERSIST
+    # Return validated DTO
     return brand_kit
 
 
-@app.post("/project/audit", response_model=AuditResponse)
-async def audit_project(
-    id: str = Form(...),
-    title: str = Form(...),
-    brand_kit_id: str = Form(...),
-    file: UploadFile = File(...),
+def _process_audit_job(
+    pdf_bytes: bytes,
+    bible_dict: dict,
+    assets_for_auditor: list,
+    brand_kit_id: str,
+    allowed_fonts: list,
 ):
-    """Audit a PDF against a brand kit's assets."""
-
-    # 1. Retrieve brand kit
-    brand_kit = brand_kit_store.get(brand_kit_id)
-    if not brand_kit:
-        raise HTTPException(
-            status_code=404, detail=f"Brand kit '{brand_kit_id}' not found"
-        )
-
-    # 2. Read PDF
-    pdf_bytes = await file.read()
-
+    """
+    Blocking CPU-bound function to process PDF audit.
+    MUST be run in a separate thread (run_in_executor).
+    """
     try:
         pages = convert_from_bytes(pdf_bytes, dpi=150)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to process PDF: {str(e)}")
+        # Raise generic error to be caught by caller
+        raise ValueError(f"Failed to process PDF: {str(e)}")
 
-    # 3. Initialize auditor with brand kit assets
-    reference_assets = brand_kit["assets"]
-
-    # Prepare assets for auditor
-    assets_for_auditor = []
-    has_logos = False
-    for asset in reference_assets:
-        assets_for_auditor.append({"image": asset["path"], "type": asset["category"]})
-        if asset["category"] == "LOGO":
-            has_logos = True
-
-    # If no logos, we might normally return empty,
-    # but now we might want to audit generic things
-    # But current auditor relies on logos for initialization partly?
-    # Let's just proceed.
-    # The auditor logic handles empty logos gracefully mostly or we check:
-    if not has_logos:
-        # Still audit text etc? The original code returned empty.
-        # Let's stick to original behavior for now if absolutely required, OR proceed.
-        # BrandAuditor init does loop over logos. If empty, logo_variants is empty.
-        pass
-
-    auditor = IntegratedBrandAuditor(brand_kit, assets_for_auditor)
+    auditor = IntegratedBrandAuditor(bible_dict, assets_for_auditor)
     typ_auditor = TypographyAuditor(siamese_manager)
-    allowed_fonts = brand_kit.get("fonts", [])
 
-    # 4. Audit each page
-    all_results: List[InspectionResult] = []
+    all_results = []
 
     for page_num, page_img in enumerate(pages, start=1):
-        # Now returns list of dicts, including PASS items
-        results = auditor.audit_page(page_img)
+        page_img = downsample_image(page_img)
 
-        # [NEW] Typography Audit
+        # Run audits
+        results = auditor.audit_page(page_img)
         typ_results = typ_auditor.audit_page(page_img, brand_kit_id, allowed_fonts)
         results.extend(typ_results)
 
         page_w, page_h = page_img.size
-
         for r in results:
             x, y, w, h = r["bbox"]
             status = r["status"]
 
-            # Determine severity
-            if status == "PASS":
-                level = "PASS"
-            else:
-                level = "MEDIUM"
-                if "ratio" in r["metric"].lower() and "0.3" in r["metric"]:
-                    level = "CRITICAL"
+            # Determine level
+            level = "PASS" if status == "PASS" else "MEDIUM"
+            if "ratio" in r["metric"].lower() and "0.3" in r["metric"]:
+                level = "CRITICAL"
 
-            # Normalize coordinates to 0-1 range
-            # Ensure we don't divide by zero (unlikely for a page)
-            # pyrefly: ignore [unsupported-operation]
-            norm_x = x / page_w
-            # pyrefly: ignore [unsupported-operation]
-            norm_y = y / page_h
-            # pyrefly: ignore [unsupported-operation]
-            norm_w = w / page_w
-            # pyrefly: ignore [unsupported-operation]
-            norm_h = h / page_h
+            # Normalize coordinates
+            norm_x = float(x) / float(page_w) if page_w else 0.0
+            norm_y = float(y) / float(page_h) if page_h else 0.0
+            norm_w = float(w) / float(page_w) if page_w else 0.0
+            norm_h = float(h) / float(page_h) if page_h else 0.0
 
             result_item = InspectionResult(
                 id=str(uuid.uuid4()),
@@ -333,86 +303,195 @@ async def audit_project(
             )
             all_results.append(result_item)
 
-    # 5. Calculate score
+    return all_results, len(pages)
+
+
+@app.post("/project/audit", response_model=ProjectRead)
+async def audit_project(
+    id: str = Form(...),
+    title: str = Form(...),
+    brand_kit_id: str = Form(...),
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_session),
+):
+    """Audit a PDF against a brand kit's assets."""
+    # EAGER LOAD everything to avoid N+1 and async generic errors
+    query = (
+        select(BrandKit)
+        .where(BrandKit.id == brand_kit_id)
+        .options(
+            # pyrefly: ignore [bad-argument-type]
+            selectinload(BrandKit.assets),
+            # pyrefly: ignore [bad-argument-type]
+            selectinload(BrandKit.colors),
+            # pyrefly: ignore [bad-argument-type]
+            selectinload(BrandKit.typography),  # Updated rel name
+        )
+    )
+    result = await session.exec(query)
+    brand_kit = result.first()
+
+    if not brand_kit:
+        raise HTTPException(
+            status_code=404, detail=f"Brand kit '{brand_kit_id}' not found"
+        )
+
+    pdf_bytes = await file.read()
+
+    # Prepare assets for auditor (Adapter to old dict format)
+    assets_for_auditor = []
+    for asset in brand_kit.assets:
+        assets_for_auditor.append(
+            {"image": asset.path, "type": asset.category, "filename": asset.filename}
+        )
+
+    # Prepare Bible Dict (Adapter)
+    bible_dict = {
+        "brand_name": brand_kit.brand_name,
+        "colors": [c.model_dump() for c in brand_kit.colors],
+        "typography": [f.model_dump() for f in brand_kit.typography],  # Updated rel
+        "logo": brand_kit.logo_rules,
+        "brandvoice": brand_kit.brand_voice,
+    }
+
+    # Extract allowed fonts dynamically from assets
+    allowed_fonts = [a.filename for a in brand_kit.assets if a.category == "FONT"]
+
+    try:
+        loop = asyncio.get_running_loop()
+        all_results, page_count = await loop.run_in_executor(
+            None,
+            _process_audit_job,
+            pdf_bytes,
+            bible_dict,
+            assets_for_auditor,
+            brand_kit_id,
+            allowed_fonts,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Audit failed: {str(e)}")
+
     critical_count = sum(1 for v in all_results if v.level == "CRITICAL")
     medium_count = sum(1 for v in all_results if v.level == "MEDIUM")
-
-    # Don't penalize PASS items
     score = max(0, 100 - (critical_count * 20) - (medium_count * 10))
 
     if critical_count > 0:
         overall_status = "CRITICAL"
     elif medium_count > 0:
-        overall_status = "ACTION_REQUIRED"  # Fixed logic
+        overall_status = "ACTION_REQUIRED"
     else:
         overall_status = "COMPLIANT"
 
-    # === PERSISTENCE LOGIC START ===
-    project_data = {
-        "id": id,
-        "title": title,
-        "date": datetime.datetime.now().strftime("%b %d, %Y"),
-        "status": overall_status,
-        "score": score,
-        "brandKitId": brand_kit_id,
-        "files": [
-            {
-                "id": str(uuid.uuid4()),
-                "name": file.filename,
-                "url": f"/uploads/projects/{id}/{file.filename}",
-                "status": "ready",
-                # pyrefly: ignore [deprecated]
-                "violations": [v.dict() for v in all_results],
-                "uploadDate": datetime.datetime.now().strftime("%m/%d/%Y"),
-            }
-        ],
-    }
-
-    # Save PDF to disk for viewing
+    # Save PDF
     project_dir = UPLOAD_DIR / "projects" / id
     project_dir.mkdir(parents=True, exist_ok=True)
     if not file.filename:
-        raise HTTPException(status_code=400, detail="Filename missing")
+        file.filename = "unknown.pdf"
     pdf_path = project_dir / file.filename
-
     with open(pdf_path, "wb") as f:
         f.write(pdf_bytes)
 
-    project_store[id] = project_data
-    save_store()
-    # === PERSISTENCE LOGIC END ===
+    # Create ProjectFile
+    project_file = ProjectFile(
+        project_id=id,
+        name=file.filename,
+        url=f"/uploads/projects/{id}/{file.filename}",
+        status="ready",
+        violations=[v.model_dump() for v in all_results],
+        page_count=page_count,
+    )
 
-    return AuditResponse(
-        projectId=id,
+    project = Project(
+        id=id,
         title=title,
-        violations=all_results,
-        score=score,
+        created_at=datetime.now(timezone.utc),
         status=overall_status,
+        score=score,
+        brand_kit_id=brand_kit_id,
+        files=[project_file],
+    )
+
+    session.add(project)
+    await session.commit()
+    await session.refresh(project)
+
+    # Construct DTO explicitly to avoid manipulating attached DB object
+    return ProjectRead(
+        id=project.id,
+        title=project.title,
+        created_at=project.created_at,
+        status=project.status,
+        score=project.score,
+        brand_kit_id=project.brand_kit_id,
+        brand_kit=brand_kit,  # Explicitly pass loaded object
+        # pyrefly: ignore [deprecated]
+        files=[ProjectFileRead.from_orm(project_file)],  # Explicitly pass loaded object
     )
 
 
-@app.get("/brandkits")
-def list_brandkits():
+@app.get("/brandkits", response_model=List[BrandKitRead])
+async def list_brandkits(session: AsyncSession = Depends(get_session)):
     """List all brand kits."""
-    return list(brand_kit_store.values())
+    # Eager load assets, colors, and typography (was fonts)
+    query = select(BrandKit).options(
+        selectinload(BrandKit.assets),  # type: ignore
+        selectinload(BrandKit.colors),  # type: ignore
+        selectinload(BrandKit.typography),  # type: ignore
+    )
+    result = await session.exec(query)
+    kits = result.all()
+
+    # DTO automatically handles serialization of nested models
+    return kits
 
 
-@app.get("/projects")
-def list_projects():
+@app.get("/projects", response_model=List[ProjectRead])
+async def list_projects(
+    expand: Optional[str] = Query(None),
+    limit: Optional[int] = Query(None),
+    session: AsyncSession = Depends(get_session),
+):
     """List all projects."""
-    return list(project_store.values())
+    # Eager load nested data if expanded
+    query = (
+        select(Project)
+        # pyrefly: ignore [missing-attribute]
+        .order_by(Project.created_at.desc())
+        .options(
+            selectinload(Project.files),  # type: ignore
+        )
+    )
+
+    if expand == "brandKit":
+        # Eager load BrandKit and its children
+        query = query.options(
+            selectinload(Project.brand_kit).options(  # type: ignore
+                selectinload(BrandKit.assets),  # type: ignore
+                selectinload(BrandKit.colors),  # type: ignore
+                selectinload(BrandKit.typography),  # type: ignore
+            )
+        )
+
+    result = await session.exec(query)
+    projects = list(result.all())
+
+    if limit:
+        projects = projects[:limit]
+
+    return projects
 
 
 @app.post("/brandkit/{id}/font")
-async def upload_font(id: str, file: UploadFile = File(...)):
+async def upload_font(
+    id: str, file: UploadFile = File(...), session: AsyncSession = Depends(get_session)
+):
     """Upload a TTF/OTF font file to the brand kit."""
-    if id not in brand_kit_store:
+    brand_kit = await session.get(BrandKit, id)
+    if not brand_kit:
         raise HTTPException(status_code=404, detail="Brand kit not found")
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is missing")
-
-    brand_kit = brand_kit_store[id]
 
     # save file
     kit_dir = UPLOAD_DIR / id
@@ -437,14 +516,17 @@ async def upload_font(id: str, file: UploadFile = File(...)):
     # Save Embeddings
     siamese_manager.save_embeddings(id, file.filename, result["embeddings"])
 
-    # Update Store
-    if "fonts" not in brand_kit:
-        brand_kit["fonts"] = []
+    # Create Asset Record
+    new_asset = Asset(
+        brand_kit_id=id,
+        category="FONT",
+        filename=file.filename,
+        path=str(font_path),
+        url=f"/uploads/{id}/{file.filename}",
+    )
 
-    if file.filename not in brand_kit["fonts"]:
-        brand_kit["fonts"].append(file.filename)
-
-    save_store()
+    session.add(new_asset)
+    await session.commit()
 
     return {
         "status": "success",

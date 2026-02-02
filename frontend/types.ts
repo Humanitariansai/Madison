@@ -32,6 +32,7 @@ export interface Project {
   date: string;
   status: 'COMPLIANT' | 'CRITICAL' | 'ACTION_REQUIRED';
   score: number;
+  brandKitId: string; // Added for easier filtering
   brandKit: BrandKit;
   thumbnail?: string;
   files: UploadedFile[];
@@ -60,22 +61,78 @@ export interface BrandLogoRule {
   type: 'DO' | 'DONT';
 }
 
+export interface BrandLogo {
+  allowed_ratios?: number[];
+  rules?: BrandLogoRule[];
+  primary_asset_id?: string;
+  variants?: string[];
+}
+
+export interface BrandVoice {
+  attributes?: string[];
+  forbidden_keywords?: string[];
+  frequent_keywords?: string[];
+}
+
 export interface BrandKit {
   id: string;
   title: string;
-  date: string;
-  files: UploadedFile[];
+  brand_name?: string;
+  created_at: string;
 
-  // Basic inferred colors (backward compatibility)
-  colors?: { name: string; hex: string; type: string }[];
-
-  // Rich Data from Guidelines
-  rich_colors?: BrandColor[];
+  // Optimized Schema
+  colors?: BrandColor[];           // Unified colors (simple hex or rich metadata)
+  color_tolerance?: number;
   typography?: BrandTypography[];
-  logo_rules?: BrandLogoRule[];
-  forbidden_keywords?: string[];
-  brand_voice_attributes?: string[];
+  logo?: BrandLogo;
+  brand_voice?: BrandVoice;
+  assets?: ApiAsset[];
 
-  logos?: { id: string | number; name: string; url: string; variant: string }[];
-  imagery?: {}[];
+  // UI-specific computed fields
+  files?: UploadedFile[];  // Legacy mapping
+}
+
+// ===== API Response Types =====
+// These types represent the shape of data coming from the backend API
+
+export interface ApiAsset {
+  id: string;
+  filename: string;
+  category: 'LOGO' | 'FONT' | 'GUIDELINES' | 'IMAGERY' | 'TEMPLATE' | 'DOCUMENT' | 'OTHER';
+  path: string;
+  url: string;
+  metadata?: Record<string, any>;
+}
+
+export interface ApiBrandKitResponse {
+  id: string;
+  title: string;
+  brand_name: string;
+  created_at: string;
+
+  // Optimized Schema
+  colors: BrandColor[];
+  color_tolerance: number;
+  typography: BrandTypography[];
+  logo: BrandLogo;
+  brand_voice: BrandVoice;
+  assets: ApiAsset[];
+}
+
+export interface ApiProjectFile {
+  id: string;
+  name: string;
+  url: string;
+  violations?: InspectionResult[];
+}
+
+export interface ApiProjectResponse {
+  id: string;
+  title: string;
+  date: string;
+  status: 'COMPLIANT' | 'CRITICAL' | 'ACTION_REQUIRED';
+  score: number;
+  brandKitId: string;
+  brandKit?: ApiBrandKitResponse; // When using ?expand=brandKit
+  files?: ApiProjectFile[];
 }

@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: brandguide_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: brandguide
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d brandguide"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brandguide_backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@postgres:5432/brandguide
+      # If using Ollama or external services on host matching original config, use host.docker.internal
+      # or assure they are containerized. For now assuming self-contained logic or access to web.
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Mount uploads for persistence and easy host access/debugging
+      - ./backend/uploads:/app/uploads
+      # Mount code specifically for development hot-reloading if desired, but sticking to baked image for stability now.
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: brandguide_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

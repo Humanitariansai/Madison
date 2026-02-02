@@ -1,28 +1,24 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import { Button } from './ui/Button';
-import { Input } from './ui/Input';
-import { Spinner } from './ui/Spinner';
-import { FileUploader } from './FileUploader'; // <--- Import the reusable component
+import { Button } from "./ui/button"
+import { Input } from "./ui/input";
+import { Spinner } from './ui/spinner';
+import { FileUploader } from './FileUploader';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  // CHANGED: Now accepts an array of files
   onSubmit: (data: { name: string; files: File[] }) => void;
   isProcessing: boolean;
 }
 
 export const CreateBrandKitDialog: React.FC<Props> = ({ isOpen, onClose, onSubmit, isProcessing }) => {
   const [name, setName] = useState('');
-
-  // CHANGED: State is now an array
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   if (!isOpen) return null;
 
   const handleSubmit = () => {
-    // Check for length > 0
     if (selectedFiles.length > 0 && name) {
       onSubmit({ name, files: selectedFiles });
     }
@@ -65,16 +61,12 @@ export const CreateBrandKitDialog: React.FC<Props> = ({ isOpen, onClose, onSubmi
                 />
               </div>
 
-              {/*
-                 REPLACED: Huge block of manual drag/drop code
-                 WITH: Reusable Component
-              */}
               <FileUploader
                 label="Upload Assets"
-                files={selectedFiles}          // Pass the array
-                onFilesChange={setSelectedFiles} // Update the array
-                multiple={true}                // <--- Enable Multiple
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                files={selectedFiles}
+                onFilesChange={setSelectedFiles}
+                multiple={true}
+                accept="application/pdf, .otf, .ttf"
                 helperText="Upload PDF guides, Logo sheets, or Typography docs."
               />
             </>
@@ -87,8 +79,8 @@ export const CreateBrandKitDialog: React.FC<Props> = ({ isOpen, onClose, onSubmi
           <Button
             disabled={selectedFiles.length === 0 || !name || isProcessing}
             onClick={handleSubmit}
-            isLoading={isProcessing}
           >
+            {isProcessing && <Spinner className="mr-2 h-4 w-4" />}
             Create Guidelines ({selectedFiles.length})
           </Button>
         </div>
