@@ -1,90 +1,141 @@
-import os
 import re
-import json
-import requests
-from bs4 import BeautifulSoup
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
-import nltk
-from crewai.tools import BaseTool
-import nltk
-
-def ensure_vader():
-    try:
-        nltk.data.find("sentiment/vader_lexicon.zip")
-    except LookupError:
-        nltk.download("vader_lexicon")
-
-ensure_vader()
+from collections import Counter
+from typing import List, Dict, Any
 
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
-sia = SentimentIntensityAnalyzer()
-
-# Download VADER data if missing
-nltk.download("vader_lexicon", quiet=True)
 
 
-class ReviewScraperTool(BaseTool):
-    name: str = "review_scraper"
-    description: str = (
-        "Scrapes online reviews for a given product and performs sentiment analysis."
-    )
+_STOPWORDS = {
+    "the","and","a","an","to","of","in","it","is","was","for","on","with","this","that","as",
+    "are","be","but","not","have","had","my","we","they","you","i","at","so","if","or",
+    "from","by","their","its","them","there","when","what","which","who","will","can","just",
+    "very","really","too","also"
+}
 
-    def _run(self, product_name: str) -> str:
-        """
-        Scrape sample product reviews (Amazon-like demo) and compute sentiment insights.
-        You can replace 'sample URL' with real sources if needed.
-        """
-        try:
-            # Simulated search URL (replace with actual scraping endpoint if needed)
-            query = product_name.replace(" ", "+")
-            url = f"https://www.amazon.com/s?k={query}"
-            headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-                )
-            }
+def _normalize_product_tokens(product_name: str) -> List[str]:
+    # break into useful tokens: "Lao Gan Ma Chili Crisp" -> ["lao","gan","ma","chili","crisp","laoganma"]
+    base = re.sub(r"[^a-zA-Z0-9\s]", " ", product_name.lower()).split()
+    joined = "".join(base)
+    tokens = [t for t in base if len(t) >= 3]
+    if len(joined) >= 5:
+        tokens.append(joined)
+    return list(dict.fromkeys(tokens))  # dedupe preserving order
 
-            # Fetch HTML
-            res = requests.get(url, headers=headers, timeout=10)
-            soup = BeautifulSoup(res.text, "html.parser")
 
-            # Extract mock reviews (Amazon blocks direct scraping, so we simulate structure)
-            reviews = []
-            for span in soup.find_all("span", {"class": "a-size-base review-text"}):
-                text = re.sub(r"\s+", " ", span.get_text(strip=True))
-                if text:
-                    reviews.append(text)
-            if not reviews:
-                # fallback synthetic reviews (demo)
-                reviews = [
-                    "Absolutely love this product! Works perfectly and exceeded expectations.",
-                    "It’s okay but the battery doesn’t last as long as advertised.",
-                    "Terrible quality for the price, would not recommend.",
-                    "Fantastic design and very comfortable to use.",
-                    "Mediocre product, arrived late and packaging was poor."
-                ]
+def _split_sentences(text: str) -> List[str]:
+    # lightweight sentence split (no extra deps)
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return []
+    parts = re.split(r"(?<=[\.\!\?])\s+", text)
+    return [p.strip() for p in parts if len(p.strip()) >= 20]
 
-            # Sentiment Analysis
-            sia = SentimentIntensityAnalyzer()
-            sentiments = [sia.polarity_scores(r)["compound"] for r in reviews]
 
-            avg_score = sum(sentiments) / len(sentiments)
-            positive = sum(1 for s in sentiments if s > 0.05)
-            negative = sum(1 for s in sentiments if s < -0.05)
-            neutral = len(sentiments) - positive - negative
+def _mentions_product(sentence: str, tokens: List[str]) -> bool:
+    s = sentence.lower()
+    # allow partial mentions to catch "laoganma" style
+    return any(t in s for t in tokens)
 
-            result = {
-                "product": product_name,
-                "total_reviews": len(reviews),
-                "positive_percent": round(100 * positive / len(reviews), 1),
-                "negative_percent": round(100 * negative / len(reviews), 1),
-                "neutral_percent": round(100 * neutral / len(reviews), 1),
-                "average_sentiment_score": round(avg_score, 3),
-                "sample_reviews": reviews[:5],
-            }
 
-            return json.dumps(result, indent=2)
+def _extract_keywords(sentences: List[str], top_k: int = 6) -> List[str]:
+    words = []
+    for s in sentences:
+        # words only
+        ws = re.findall(r"[a-zA-Z]{3,}", s.lower())
+        ws = [w for w in ws if w not in _STOPWORDS]
+        words.extend(ws)
+    counts = Counter(words)
+    # remove super-generic review words
+    for bad in ["product","buy","bought","use","used","using","great","good","bad","love"]:
+        counts.pop(bad, None)
+    return [w for w, _ in counts.most_common(top_k)]
 
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+
+def analyze_sources_sentiment(
+    product_name: str,
+    sources: List[Dict[str, Any]],
+    max_quotes_per_bucket: int = 2
+) -> Dict[str, Any]:
+    """
+    sources: list of {"url":..., "title":..., "text":...}
+    Returns a VERIFIED sentiment payload:
+    - quotes are verbatim sentences from sources
+    - every quote has a url
+    - if not enough product-linked sentences: no_verified_sources=true
+    """
+    analyzer = SentimentIntensityAnalyzer()
+    tokens = _normalize_product_tokens(product_name)
+
+    pos_sents = []
+    neg_sents = []
+    neu_sents = []
+
+    quote_pool = {"positive": [], "negative": [], "neutral": []}
+
+    for src in sources:
+        url = src.get("url", "")
+        text = src.get("text", "") or ""
+        for sent in _split_sentences(text):
+            if not _mentions_product(sent, tokens):
+                continue
+
+            score = analyzer.polarity_scores(sent)["compound"]
+            if score >= 0.25:
+                pos_sents.append(sent)
+                quote_pool["positive"].append({"quote": sent, "url": url})
+            elif score <= -0.25:
+                neg_sents.append(sent)
+                quote_pool["negative"].append({"quote": sent, "url": url})
+            else:
+                neu_sents.append(sent)
+                quote_pool["neutral"].append({"quote": sent, "url": url})
+
+    total = len(pos_sents) + len(neg_sents) + len(neu_sents)
+
+    # If nothing matched the product, we refuse to pretend
+    if total < 8:
+        return {
+            "product": product_name,
+            "no_verified_sources": True,
+            "sentiment": {"positive": 0, "negative": 0, "neutral": 0},
+            "themes": {"positive": [], "negative": [], "neutral": []},
+            "quotes": [],
+            "note": "Not enough product-linked text found in sources to compute verified sentiment."
+        }
+
+    pos_pct = round((len(pos_sents) / total) * 100)
+    neg_pct = round((len(neg_sents) / total) * 100)
+    neu_pct = 100 - pos_pct - neg_pct  # ensure sums to 100
+
+    # themes from actual sentences
+    themes = {
+        "positive": _extract_keywords(pos_sents, top_k=6),
+        "negative": _extract_keywords(neg_sents, top_k=6),
+        "neutral": _extract_keywords(neu_sents, top_k=6),
+    }
+
+    # pick quotes (verbatim) — also ensure they’re not generic duplicates
+    def pick_quotes(bucket: str):
+        seen = set()
+        out = []
+        for q in quote_pool[bucket]:
+            key = q["quote"].lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"polarity": bucket, "quote": q["quote"], "url": q["url"]})
+            if len(out) >= max_quotes_per_bucket:
+                break
+        return out
+
+    quotes = pick_quotes("positive") + pick_quotes("negative")
+
+    return {
+        "product": product_name,
+        "no_verified_sources": False,
+        "sentiment": {"positive": pos_pct, "negative": neg_pct, "neutral": neu_pct},
+        "themes": themes,
+        "quotes": quotes
+    }
+
+
