@@ -7,8 +7,23 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     server: {
-      port: 3000,
-      host: '0.0.0.0',
+      host: true,
+      port: 5173,
+      strictPort: true,
+      proxy: {
+        '/brandkit': {
+          target: 'http://backend:8000',
+          changeOrigin: true,
+        },
+        '/brandkits': {
+          target: 'http://backend:8000',
+          changeOrigin: true,
+        },
+        '/projects': {
+          target: 'http://backend:8000',
+          changeOrigin: true,
+        },
+      },
     },
     plugins: [react(), tailwindcss()],
     define: {

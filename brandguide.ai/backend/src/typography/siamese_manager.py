@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -12,24 +13,58 @@ MODEL_PATH = MODELS_DIR / "siamese_model.pt"
 
 
 class SiameseManager:
-    def __init__(self):
-        print("Initializing SiameseManager...")
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(SiameseManager, cls).__new__(cls)
+                    cls._instance._initialize()
+        return cls._instance
+
+    def _initialize(self):
+        print("Initializing SiameseManager (Eager Loading)...")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # 1. Load Model
-        self.model = SiameseNetwork().to(self.device)
-        self.classifier = SiameseFontClassifier(self.model)
-        self.renderer = FontRenderer()
+        # 1. Load Model Eagerly
+        print("Loading Siamese Network...")
+        self._model = SiameseNetwork().to(self.device)
+        self._load_weights()
 
+        # 2. Init Classifier Eagerly
+        print("Initializing Classifier...")
+        self._classifier = SiameseFontClassifier(self._model)
+
+        # 3. Init Renderer Eagerly
+        print("Initializing FontRenderer...")
+        self._renderer = FontRenderer()
+
+        print("SiameseManager initialized successfully.")
+
+    @property
+    def model(self):
+        return self._model
+
+    @property
+    def classifier(self):
+        return self._classifier
+
+    @property
+    def renderer(self):
+        return self._renderer
+
+    def _load_weights(self):
         # Try to load weights
         if MODEL_PATH.exists():
             print(f"Loading Siamese model from {MODEL_PATH}...")
             try:
                 checkpoint = torch.load(MODEL_PATH, map_location=self.device)
                 if "model_state_dict" in checkpoint:
-                    self.model.load_state_dict(checkpoint["model_state_dict"])
+                    self._model.load_state_dict(checkpoint["model_state_dict"])
                 else:
-                    self.model.load_state_dict(checkpoint)
+                    self._model.load_state_dict(checkpoint)
                 print("Model weights loaded successfully.")
             except Exception as e:
                 print(f"Failed to load weights: {e}")
@@ -38,7 +73,28 @@ class SiameseManager:
             print(
                 f"No model found at {MODEL_PATH}. Using initialized (random) weights."
             )
-            # TODO: Trigger auto-training here if needed
+
+    def _load_model(self):
+        print("Lazy loading Siamese Network...")
+        self._model = SiameseNetwork().to(self.device)
+
+        # Try to load weights
+        if MODEL_PATH.exists():
+            print(f"Loading Siamese model from {MODEL_PATH}...")
+            try:
+                checkpoint = torch.load(MODEL_PATH, map_location=self.device)
+                if "model_state_dict" in checkpoint:
+                    self._model.load_state_dict(checkpoint["model_state_dict"])
+                else:
+                    self._model.load_state_dict(checkpoint)
+                print("Model weights loaded successfully.")
+            except Exception as e:
+                print(f"Failed to load weights: {e}")
+                print("WARNING: Using initialized (random) weights")
+        else:
+            print(
+                f"No model found at {MODEL_PATH}. Using initialized (random) weights."
+            )
 
     def ingest_new_font(self, font_path: str, font_name: str) -> Dict[str, Any]:
         """

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Upload, X, FileCheck, ArrowRight, Trash2, FileText } from 'lucide-react';
-import { Button } from './ui/Button';
-import { Spinner } from './ui/Spinner';
+import { Button } from "./ui/button";
+import { Spinner } from './ui/spinner';
 
 interface Props {
   isOpen: boolean;

@@ -1,0 +1,25 @@
+# Use an official Node.js runtime as a parent image
+FROM node:20-alpine
+
+# Set the working directory
+WORKDIR /app
+
+# Copy package.json only (no lock file to force fresh resolution)
+COPY package.json package-lock.json ./
+
+# Clear any npm cache and install fresh
+# This handles ARM64 Alpine optional dependencies correctly
+RUN npm ci
+
+# Copy the rest of the application code
+COPY . .
+
+# Expose the port the app runs on
+EXPOSE 5173
+
+# Enable file watching for hot reload in Docker
+ENV CHOKIDAR_USEPOLLING=true
+ENV WATCHPACK_POLLING=true
+
+# Start the development server
+CMD ["npm", "run", "dev"]
