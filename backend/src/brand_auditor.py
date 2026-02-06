@@ -1,24 +1,31 @@
+import logging
+
 import cv2
 import numpy as np
 import pytesseract
+import torch
 from pdf2image import convert_from_path
 from PIL import Image, ImageStat
 from sklearn.cluster import KMeans
 
-from .services.ml_service import ml_service
+from .layout_classifier import LayoutType, PageLayout
+from .services.ml_service import MLService
+
+logger = logging.getLogger(__name__)
 
 
 class IntegratedBrandAuditor:
-    def __init__(self, brand_bible, reference_assets):
+    def __init__(self, brand_bible, reference_assets, ml_service: MLService = None):
         self.bible = brand_bible
-        self.ml = ml_service  # Use Singleton
+        # If no service provided, grab the singleton instance
+        self.ml = ml_service if ml_service else MLService()
 
         # --- 2. INDEX LOGO VARIANTS ---
         # We index every single logo file provided in the training assets
         self.logo_variants = []
         logo_imgs = [x for x in reference_assets if x["type"] == "LOGO"]
 
-        print(f"Indexing {len(logo_imgs)} Logo Variants...")
+        logger.info(f"Indexing {len(logo_imgs)} Logo Variants...")
         for i, item in enumerate(logo_imgs):
             pil_img = item["image"]
 
@@ -27,7 +34,9 @@ class IntegratedBrandAuditor:
                 try:
                     pil_img = Image.open(pil_img).convert("RGB")
                 except Exception as e:
-                    print(f"Failed to load logo variant {item.get('filename')}: {e}")
+                    logger.error(
+                        f"Failed to load logo variant {item.get('filename')}: {e}"
+                    )
                     continue
             # ---------------------------------------------------------------
 
@@ -54,6 +63,246 @@ class IntegratedBrandAuditor:
                         "original_image": pil_img,
                     }
                 )
+
+        # --- 3. COMPUTE LOGO ANCHOR EMBEDDINGS (CLIP) ---
+        # For the Semantic Safeguard (Distorted/Third-Party Logic)
+        self.logo_embeddings = None
+        if self.logo_variants:
+            logger.info("Computing Logo Anchor Embeddings...")
+            try:
+                # Collect all logo PIL images
+                anchor_imgs = [v["original_image"] for v in self.logo_variants]
+
+                # Preprocess
+                inputs = self.ml.clip_processor(
+                    images=anchor_imgs, return_tensors="pt", padding=True
+                )
+
+                # Encode
+                with torch.no_grad():
+                    image_features = self.ml.clip_model.get_image_features(**inputs)
+
+                # Normalize
+                self.logo_embeddings = image_features / image_features.norm(
+                    dim=-1, keepdim=True
+                )
+                logger.info(f"✅ Indexed {len(self.logo_embeddings)} Logo Anchors.")
+            except Exception as e:
+                logger.error(f"⚠️ Failed to compute logo embeddings: {e}")
+
+        # --- 4. PRE-COMPUTE 3RD PARTY PROMPTS ---
+        self.third_party_prompts = [
+            "a logo",
+            "a photograph",
+            "generic imagery",
+            "text screenshot",
+        ]
+        self.tp_text_feats = None
+        try:
+            txt_inputs = self.ml.clip_processor(
+                text=self.third_party_prompts, return_tensors="pt", padding=True
+            )
+            with torch.no_grad():
+                feat = self.ml.clip_model.get_text_features(**txt_inputs)
+
+                # Defense
+                if not isinstance(feat, torch.Tensor):
+                    if hasattr(feat, "text_embeds"):
+                        feat = feat.text_embeds
+                    elif hasattr(feat, "pooler_output"):
+                        feat = feat.pooler_output
+                    else:
+                        feat = feat[0]
+
+                self.tp_text_feats = feat / feat.norm(dim=-1, keepdim=True)
+            logger.info("✅ Pre-computed 3rd Party Prompts.")
+        except Exception as e:
+            logger.error(f"⚠️ Failed to compute prompt embeddings: {e}")
+
+    def _parse_colors_to_rgb(self, colors: list) -> list:
+        """
+        Parse a list of color dictionaries to RGB values.
+        Tries RGB field first (handles various formats), then falls back to hex.
+
+        Args:
+            colors: List of color dicts with 'rgb' and/or 'hex' fields
+
+        Returns:
+            List of RGB values (as lists or tuples)
+        """
+        allowed_rgbs = []
+
+        if not colors:
+            return allowed_rgbs
+
+        for c in colors:
+            # Try RGB first (if available from PDF)
+            if c.get("rgb"):
+                try:
+                    val = c["rgb"]
+                    if isinstance(val, str):
+                        # Handle "74-21-75" or "74, 21, 75" formats
+                        parts = val.replace(",", " ").replace("-", " ").split()
+                        allowed_rgbs.append([float(p) for p in parts])
+                    elif isinstance(val, list):
+                        allowed_rgbs.append(val)
+                    continue  # Successfully parsed RGB, skip hex
+                except Exception:
+                    pass  # Fall through to hex parsing
+
+            # Fall back to hex (always present)
+            if c.get("hex"):
+                try:
+                    h = c["hex"].lstrip("#")
+                    rgb = tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
+                    allowed_rgbs.append(rgb)
+                except Exception:
+                    pass
+
+        return allowed_rgbs
+
+    # ==================================================
+    # PHASE 0: BATCH AUDIT (Entry Point)
+    # ==================================================
+    def audit_batch(
+        self,
+        pages_pil: list[Image.Image],
+        layouts: list[PageLayout],
+        page_cvs: list[np.ndarray],
+    ):
+        """
+        Efficient Batch Auditor.
+        1. MAP: Collect all Text strings and Image crops from ALL pages.
+        2. REDUCE: Run Batch Inference (NLP + CLIP).
+        3. ASSIGN: Distribute results back to pages.
+        """
+        logger.info(f"Starting Batch Audit on {len(pages_pil)} pages...")
+        batch_results = [[] for _ in pages_pil]  # results per page
+
+        # --- A. Collect Inputs ---
+        all_text_tasks = []  # (page_idx, text_string, w)
+        all_crop_tasks = []  # (page_idx, region, crop_pil)
+
+        for i, (page, layout) in enumerate(zip(pages_pil, layouts)):
+            w, h = page.size
+
+            # 1. Text Regions
+            text_regions = (
+                layout.get_regions_by_type(LayoutType.TEXT)
+                + layout.get_regions_by_type(LayoutType.TITLE)
+                + layout.get_regions_by_type(LayoutType.SECTION_HEADER)
+            )
+
+            full_text_parts = [
+                r.content
+                for r in text_regions
+                if isinstance(r.content, str) and r.content
+            ]
+            if full_text_parts:
+                full_text = " ".join(full_text_parts)
+                if len(full_text.split()) >= 10:
+                    all_text_tasks.append((i, full_text, w))
+
+            # 2. Image Regions
+            img_regions = layout.get_regions_by_type(LayoutType.FIGURE)
+            for region in img_regions:
+                x0, y0, x1, y1 = region.bbox
+                crop_box = (int(x0), int(y0), int(x1), int(y1))
+                if crop_box[2] > crop_box[0] and crop_box[3] > crop_box[1]:
+                    crop = page.crop(crop_box)
+                    all_crop_tasks.append((i, region, crop))
+
+        # --- B. Batch Inference ---
+
+        # B1. Text (NLP Zero-Shot)
+        if all_text_tasks:
+            texts = [t[1] for t in all_text_tasks]
+            labels = self.bible["brand_voice_attributes"] + ["spammy", "aggressive"]
+
+            logger.info(f"Batch Auditing {len(texts)} text blocks...")
+            try:
+                # Run batch inference
+                nlp_results = self.ml.nlp_pipe(
+                    texts, candidate_labels=labels, batch_size=8
+                )
+
+                # Assign back
+                if not isinstance(nlp_results, list):
+                    nlp_results = [nlp_results]
+
+                for (p_idx, txt, w), res in zip(all_text_tasks, nlp_results):
+                    # pyrefly: ignore [bad-index]
+                    top_label = res["labels"][0]
+                    status = (
+                        "PASS"
+                        if top_label in self.bible["brand_voice_attributes"]
+                        else "WARNING"
+                    )
+
+                    batch_results[p_idx].append(
+                        {
+                            "type": "TEXT_BODY",
+                            "bbox": [0, 0, w, 50],
+                            "status": status,
+                            "metric": f"Tone: {top_label}",
+                            "level": "PASS" if status == "PASS" else "WARNING",
+                        }
+                    )
+            except Exception as e:
+                logger.error(f"Batch Text Audit failed: {e}")
+
+        # B2. Images (CLIP)
+        if all_crop_tasks:
+            crops = [t[2] for t in all_crop_tasks]
+            logger.info(f"Batch Auditing {len(crops)} image crops...")
+
+            try:
+                # 1. Encode All Crops
+                inputs = self.ml.clip_processor(
+                    images=crops, return_tensors="pt", padding=True
+                )
+                with torch.no_grad():
+                    crop_embeddings = self.ml.clip_model.get_image_features(**inputs)
+
+                    # Defense against varying Transformers versions return types
+                    if not isinstance(crop_embeddings, torch.Tensor):
+                        if hasattr(crop_embeddings, "image_embeds"):
+                            crop_embeddings = crop_embeddings.image_embeds
+                        elif hasattr(crop_embeddings, "pooler_output"):
+                            crop_embeddings = crop_embeddings.pooler_output
+                        else:
+                            crop_embeddings = crop_embeddings[0]
+
+                    # Normalize
+                    crop_embeddings = crop_embeddings / crop_embeddings.norm(
+                        dim=-1, keepdim=True
+                    )
+
+                # 2. Process Each Crop with Pre-Computed Embedding
+                for idx, (p_idx, region, crop) in enumerate(all_crop_tasks):
+                    emb = crop_embeddings[idx].unsqueeze(0)  # Keep (1, D) shape
+
+                    # Call modified worker that accepts embedding
+                    res = self._process_single_image_region(region, crop, pre_emb=emb)
+                    if res:
+                        batch_results[p_idx].append(res)
+
+            except Exception as e:
+                logger.error(f"Batch Image Audit failed: {e}")
+
+        # --- C. Background Pipeline (Fast CPU) ---
+        # No batching needed for OpenCV logic, just run loop
+        for i, (layout, page_cv) in enumerate(zip(layouts, page_cvs)):
+            # Re-create gray
+            if len(page_cv.shape) == 3:
+                gray = cv2.cvtColor(page_cv, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = page_cv
+
+            bg_res = self._pipeline_background(layout, page_cv, gray)
+            batch_results[i].extend(bg_res)
+
+        return batch_results
 
     # ==================================================
     # PHASE 1: LOGO DETECTION (Multi-Variant SIFT)
@@ -249,31 +498,7 @@ class IntegratedBrandAuditor:
         Returns: status (PASS/FAIL), message
         """
         # 1. Get Allowed Colors from Brand Kit (unified colors field)
-        allowed_rgbs = []
-
-        if self.bible.get("colors"):
-            # Extract RGBs from unified colors data
-            for c in self.bible["colors"]:
-                # Try RGB first (if available from PDF)
-                if "rgb" in c and c["rgb"]:
-                    try:
-                        val = c["rgb"]
-                        if isinstance(val, str):
-                            # Handle "74-21-75" or "74, 21, 75"
-                            parts = val.replace(",", " ").replace("-", " ").split()
-                            allowed_rgbs.append([float(p) for p in parts])
-                        elif isinstance(val, list):
-                            allowed_rgbs.append(val)
-                    except Exception:
-                        pass
-                # Fall back to hex (always present)
-                elif "hex" in c and c["hex"]:
-                    h = c["hex"].lstrip("#")
-                    try:
-                        rgb = tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
-                        allowed_rgbs.append(rgb)
-                    except Exception:
-                        pass
+        allowed_rgbs = self._parse_colors_to_rgb(self.bible.get("colors", []))
 
         if not allowed_rgbs:
             return "WARNING", "No Brand Colors defined in Kit."
@@ -328,27 +553,7 @@ class IntegratedBrandAuditor:
             bg_pixels = bg_pixels[indices]
 
         # 2. Prepare Allowed Colors
-        allowed_rgbs = []
-        if colors:
-            for rc in colors:
-                try:
-                    if rc.get("rgb"):
-                        # Clean format "R, G, B" or "R-G-B"
-                        val = rc["rgb"].replace(",", " ").replace("-", " ")
-                        allowed_rgbs.append([float(p) for p in val.split()])
-                except Exception:
-                    pass
-        # Fallback: if no RGB data, convert hex to RGB
-        if not allowed_rgbs and colors:
-            for c in colors:
-                hex_code = c.get("hex")
-                if not hex_code:
-                    continue
-                try:
-                    h = hex_code.lstrip("#")
-                    allowed_rgbs.append(tuple(int(h[i : i + 2], 16) for i in (0, 2, 4)))
-                except Exception:
-                    pass
+        allowed_rgbs = self._parse_colors_to_rgb(colors if colors else [])
 
         if not allowed_rgbs:
             return "WARNING", "No Brand Colors defined"
@@ -653,6 +858,211 @@ class IntegratedBrandAuditor:
             pass
 
         return page_results
+
+    def audit_page_with_layout(self, page_pil: Image.Image, layout: PageLayout):
+        """
+        V2 Audit: Uses structural layout analysis instead of blind OCR.
+        Implements a Pipeline/Map-Reduce style architecture.
+        """
+        logger.info(f"V2 AUDIT START: Page Layout has {len(layout.regions)} regions.")
+
+        page_cv = np.array(page_pil)
+        if len(page_cv.shape) == 3:
+            # Grayscale needed for masking (Background Audit) and SIFT
+            page_gray = cv2.cvtColor(page_cv, cv2.COLOR_RGB2GRAY)
+        else:
+            page_gray = page_cv
+
+        # --- PIPELINE START ---
+        results = []
+
+        # 1. Text Pipeline
+        results.extend(self._pipeline_text(layout, page_pil.size))
+
+        # 2. Image Pipeline (The Cascade)
+        results.extend(self._pipeline_images(layout, page_pil))
+
+        # 3. Background Pipeline
+        results.extend(self._pipeline_background(layout, page_cv, page_gray))
+
+        return results
+
+    # ==========================
+    # PIPELINE HELPERS
+    # ==========================
+
+    def _pipeline_text(self, layout: PageLayout, page_size) -> list:
+        """Aggregates all text regions and audits Brand Voice."""
+        w, h = page_size
+        text_types = [LayoutType.TEXT, LayoutType.TITLE, LayoutType.SECTION_HEADER]
+        text_regions = [r for r in layout.regions if r.type in text_types]
+
+        logger.debug(f"Pipeline Text: Found {len(text_regions)} text regions.")
+
+        full_text_parts = [
+            r.content for r in text_regions if isinstance(r.content, str) and r.content
+        ]
+
+        results = []
+        if full_text_parts:
+            full_text = " ".join(full_text_parts)
+            logger.debug(
+                f"Pipeline Text: Audit Voice on {len(full_text.split())} words."
+            )
+            status, metric = self._check_text_voice(full_text)
+            if status:
+                results.append(
+                    {
+                        "type": "TEXT_BODY",
+                        "bbox": [0, 0, w, 50],
+                        "status": status,
+                        "metric": metric,
+                        "level": "PASS" if status == "PASS" else "WARNING",
+                    }
+                )
+        return results
+
+    def _pipeline_images(self, layout: PageLayout, page_pil: Image.Image) -> list:
+        """Process all image regions through the Logo/Imagery Cascade."""
+        # MAP: Transform regions to results (or None)
+        image_regions = layout.get_regions_by_type(LayoutType.FIGURE)
+        logger.debug(f"Pipeline Images: Found {len(image_regions)} figure regions.")
+
+        results = []
+        for region in image_regions:
+            res = self._process_single_image_region(region, page_pil)
+            if res:
+                results.append(res)
+        return results
+
+    def _process_single_image_region(self, region, page_pil, pre_emb=None):
+        """
+        Worker for Image Pipeline - The Cascade Logic.
+        If 'pre_emb' is provided, skips CLIP encoding step.
+        """
+        x0, y0, x1, y1 = region.bbox
+        crop_box = (int(x0), int(y0), int(x1), int(y1))
+
+        if crop_box[2] <= crop_box[0] or crop_box[3] <= crop_box[1]:
+            return None
+
+        # Optimization: use page_pil directly if it IS a crop (passed from batch)
+        # But region.bbox is usually relative to page.
+        # Check if page_pil size matches bbox size (indicating it is already cropped)
+        if page_pil.size == (crop_box[2] - crop_box[0], crop_box[3] - crop_box[1]):
+            crop = page_pil
+        else:
+            crop = page_pil.crop(crop_box)
+
+        crop_cv = np.array(crop)
+        crop_gray = (
+            cv2.cvtColor(crop_cv, cv2.COLOR_RGB2GRAY)
+            if len(crop_cv.shape) == 3
+            else crop_cv
+        )
+
+        # A. SIFT Check
+        local_logos = self._find_logos(crop_gray)
+        if local_logos:
+            best = local_logos[0]
+            status, metric = self._check_logo_compliance(crop, best["variant"])
+            lx, ly, lw, lh = best["bbox"]
+            logger.info(f"Pipeline Image: SIFT Match found: {best['variant']['name']}")
+            return {
+                "type": "LOGO",
+                "bbox": [x0 + lx, y0 + ly, lw, lh],
+                "status": status,
+                "metric": metric,
+                "variant": best["variant"]["name"],
+                "level": "PASS" if status == "PASS" else "CRITICAL",
+            }
+
+        # B. CLIP Semantic Checks
+        # Encode if not provided
+        if pre_emb is not None:
+            crop_emb = pre_emb
+        else:
+            with torch.no_grad():
+                inputs = self.ml.clip_processor(
+                    images=crop, return_tensors="pt", padding=True
+                )
+                crop_emb = self.ml.clip_model.get_image_features(**inputs)
+                # Normalize
+                crop_emb = crop_emb / crop_emb.norm(dim=-1, keepdim=True)
+
+        # B1. Distorted Logo Check
+        if self.logo_embeddings is not None:
+            sims = crop_emb @ self.logo_embeddings.T
+            max_sim = sims.max().item()
+            if max_sim > 0.85:
+                logger.warning(f"Pipeline Image: CLIP Distorted Logo ({max_sim:.2f})")
+                # pyrefly: ignore [dict-item]
+                return {
+                    "type": "DISTORTED_LOGO",
+                    "bbox": [x0, y0, x1 - x0, y1 - y0],
+                    "status": "FAIL",
+                    "metric": f"Potential Distorted Logo (Sim: {max_sim:.2f})",
+                    "level": "WARNING",
+                }
+
+        # B2. Third-Party Check
+        # Use Pre-computed if available
+        if self.tp_text_feats is not None:
+            txt_feats = self.tp_text_feats
+        else:
+            # Fallback (old slow way)
+            prompts = ["a logo", "a photograph", "generic imagery", "text screenshot"]
+            txt_inputs = self.ml.clip_processor(
+                text=prompts, return_tensors="pt", padding=True
+            )
+            with torch.no_grad():
+                txt_feats = self.ml.clip_model.get_text_features(**txt_inputs)
+                txt_feats /= txt_feats.norm(dim=-1, keepdim=True)
+
+        probs = ((crop_emb @ txt_feats.T) * 100).softmax(dim=-1)[0]
+        if probs[0].item() > probs[1].item():
+            logger.info("Pipeline Image: Detected Third-Party Logo")
+            return {
+                "type": "THIRD_PARTY_LOGO",
+                "bbox": [x0, y0, x1 - x0, y1 - y0],
+                "status": "PASS",
+                "metric": "External/Partner Logo detected",
+                "level": "INFO",
+            }
+
+        # C. Default Imagery Audit
+        status, metric = self._check_imagery_vibe(crop)
+        logger.debug(f"Pipeline Image: Generic Vibe Check -> {status}")
+        return {
+            "type": "IMAGERY",
+            "bbox": [x0, y0, x1 - x0, y1 - y0],
+            "status": status,
+            "metric": metric,
+            "level": "PASS" if status == "PASS" else "MEDIUM",
+        }
+
+    def _pipeline_background(self, layout: PageLayout, page_cv, page_gray) -> list:
+        """Generates masks from layout and audits background compliance."""
+        mask_bg = np.zeros(page_gray.shape, dtype=np.uint8) + 255  # Start White
+
+        # Mask out ALL content regions
+        for r in layout.regions:
+            rx0, ry0, rx1, ry1 = r.bbox
+            cv2.rectangle(mask_bg, (int(rx0), int(ry0)), (int(rx1), int(ry1)), 0, -1)
+
+        bg_status, bg_msg = self._audit_background_layer(
+            page_cv, mask_bg, self.bible.get("colors")
+        )
+
+        return [
+            {
+                "type": "PALETTE",
+                "bbox": [0, 0, 50, 50],
+                "status": bg_status,
+                "metric": bg_msg,
+                "level": "PASS" if bg_status == "PASS" else "MEDIUM",
+            }
+        ]
 
     def audit_pdf(self, pdf_path):
         print(f"Auditing: {pdf_path}...")

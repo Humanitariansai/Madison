@@ -1,12 +1,30 @@
 import json
+import logging
 import os
+import sys
+import time
 from typing import List, Optional
 
-import pytesseract
-from pdf2image import convert_from_path
+import pymupdf
+from litellm import completion, get_max_tokens, token_counter
 from pydantic import BaseModel
 
 # --- Data Models ---
+
+root_logger = logging.getLogger("src")
+root_logger.setLevel(logging.DEBUG)
+
+if not root_logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+    root_logger.addHandler(handler)
+    root_logger.propagate = (
+        False  # Prevent double logging if uvicorn captures it too? Try False first.
+    )
+
+logger = logging.getLogger(__name__)
 
 
 class BrandColor(BaseModel):
@@ -36,13 +54,21 @@ class ColorUsageRule(BaseModel):
     context_description: str  # The extracted text specific to this rule
 
 
+class BrandVoiceRule(BaseModel):
+    attributes: List[str]
+    frequent_keywords: List[str]
+    forbidden_keywords: List[str]
+
+
 class ExtractedBrandInfo(BaseModel):
     brand_name: Optional[str] = None
     colors: List[BrandColor] = []
     typography: List[BrandTypography] = []
     logo_rules: List[BrandLogoRule] = []
     color_usage_rules: List[ColorUsageRule] = []  # New Field
-    forbidden_keywords: List[str] = []
+    brand_voice: BrandVoiceRule = BrandVoiceRule(
+        attributes=[], frequent_keywords=[], forbidden_keywords=[]
+    )
 
 
 class BrandGuidelineExtractor:
@@ -71,7 +97,7 @@ class BrandGuidelineExtractor:
     """
 
     def __init__(self):
-        print("Initializing Brand Guideline Extractor...")
+        logger.info("Initializing BrandGuidelineExtractor service")
         # In a real app, initialize LLM client here (e.g. OpenAI / Gemini)
 
     def _truncate_to_token_limit(self, text: str, model: str) -> str:
@@ -85,7 +111,6 @@ class BrandGuidelineExtractor:
         Returns:
             Truncated text that fits within token limit
         """
-        from litellm import get_max_tokens, token_counter
 
         # Get model's max tokens from LiteLLM (uses their maintained database)
         try:
@@ -93,15 +118,18 @@ class BrandGuidelineExtractor:
             # Use 75% for safety margin (prompt overhead, response, etc.)
             token_limit = int(max_tokens * 0.75)
         except Exception as e:
-            print(f"⚠️  Could not get max tokens for {model}: {e}. Using default 6000.")
             token_limit = 6000
             max_tokens = 8192  # Approximate default for display
+            logger.warning(
+                f"Could not get max tokens for {model}: {e}. "
+                f"Using default {token_limit} tokens."
+            )
 
         # Count actual tokens
         try:
             actual_tokens = token_counter(model=model, text=text)
-            print(
-                f"📊 Input text: {actual_tokens:,} tokens (limit: {token_limit:,}"
+            logger.info(
+                f"Input text token count: {actual_tokens:,} (limit: {token_limit:,}"
                 f" | model max: {max_tokens:,})"
             )
 
@@ -115,8 +143,8 @@ class BrandGuidelineExtractor:
 
             # Verify truncation worked
             truncated_tokens = token_counter(model=model, text=truncated_text)
-            print(
-                f"⚠️  Truncated to {truncated_tokens:,} "
+            logger.warning(
+                f"Truncated input text to {truncated_tokens:,} "
                 f"tokens ({len(truncated_text):,} chars)"
             )
 
@@ -124,33 +152,51 @@ class BrandGuidelineExtractor:
 
         except Exception as e:
             # Fallback to character-based truncation if token counting fails
-            print(f"⚠️  Token counting failed: {e}. Using character-based truncation.")
+            logger.warning(
+                f"Token counting failed: {e}. Using character-based truncation."
+            )
             chars_limit = token_limit * 4  # Rough estimate
             return text[:chars_limit]
 
     def extract_text_from_pdf(self, pdf_path: str, max_pages: int = 200) -> str:
         """
-        Converts PDF pages to text using OCR.
+        Extracts text from PDF using PyMuPDF (fitz) for speed and accuracy.
 
         Args:
             pdf_path: Path to the PDF file
             max_pages: Maximum pages to process (default: 200)
-                      - Set to 200 for Gemini Flash's large context window
-                      - Covers 99% of brand guideline PDFs
-                      - If you need more, implement chunking (see class docstring)
 
         Returns:
             Concatenated text from all pages with page markers
         """
         try:
-            pages = convert_from_path(pdf_path, last_page=max_pages)
             full_text = ""
-            for i, page in enumerate(pages):
-                text = pytesseract.image_to_string(page)
+            doc = pymupdf.open(pdf_path)
+            # Iterate through pages (up to max_pages)
+            for i, page in enumerate(doc.pages(stop=max_pages)):
+                # 1. Try Native Extraction first (Fast)
+                text = page.get_text()
+
+                # 2. If mostly empty, fallback to OCR (Slow)
+                if len(text.strip()) < 50:
+                    logger.info(
+                        f"Page {i + 1} seems to be an image scan. Running OCR..."
+                    )
+                    try:
+                        # 300 DPI is a good balance for speed/accuracy
+                        text = page.get_textpage_ocr(flags=0, dpi=300).extractText()
+                    except Exception as e:
+                        logger.warning(f"OCR failed for page {i + 1}: {e}")
+
                 full_text += f"\n--- Page {i + 1} ---\n{text}"
-            return full_text
+
+            logger.debug(f"Extracted {len(full_text)} chars from PDF")
+            return str(full_text)
+        except ImportError:
+            logger.error("PyMuPDF not installed. Please install it.")
+            return ""
         except Exception as e:
-            print(f"Error extracting text: {e}")
+            logger.error(f"Error extracting text from PDF: {e}")
             return ""
 
     def _call_llm(self, text: str) -> ExtractedBrandInfo:
@@ -163,15 +209,10 @@ class BrandGuidelineExtractor:
         - Max 3 retries with 1s, 2s, 4s delays
         - Helps prevent failures during high API usage
         """
-        import time
-
-        from litellm import completion
-
-        print("Parsing text with LLM (via LiteLLM)...")
 
         # Get model first (needed for token counting)
         model = os.getenv("LLM_MODEL", "gemini/gemini-2.0-flash")
-        print(f"Using Model: {model}")
+        logger.info(f"Parsing extracted text with LLM model: {model} (via LiteLLM)")
 
         # 1. Define the Schema for the LLM
         # We want strict JSON output matching our Pydantic model
@@ -191,7 +232,7 @@ class BrandGuidelineExtractor:
            - Example: "Use only white text on Aubergine."
            - Example: "Do not use secondary colors for text."
            - Example: "Black text is for light backgrounds."
-        6. Negative/Forbidden keywords (e.g. "don't be aggressive")
+        6. Brand Voice Rules (Attributes, frequent keywords, forbidden keywords)
 
         Return ONLY valid JSON matching this schema:
         {json.dumps(schema)}
@@ -249,22 +290,22 @@ class BrandGuidelineExtractor:
                 # If rate limit and we have retries left, wait and retry
                 if is_rate_limit and attempt < max_retries:
                     delay = base_delay * (2**attempt)  # Exponential backoff
-                    print(
-                        f"⚠️  Rate limit hit. Retrying in {delay}s..."
+                    logger.warning(
+                        f"Rate limit hit. Retrying in {delay}s "
                         f"(Attempt {attempt + 1}/{max_retries})"
                     )
                     time.sleep(delay)
                     continue
 
                 # Otherwise, fail
-                print(f"❌ LLM Extraction Failed: {e}")
+                logger.error(f"LLM Extraction Failed: {e}")
 
         # If we exhausted retries or hit a non-retryable error
         raise ValueError("Failed to extract brand guidelines after retries.")
 
     def extract_guidelines(self, pdf_path: str) -> ExtractedBrandInfo:
         # 1. OCR
-        print(f"Extracting text from {pdf_path}...")
+        logger.info(f"Extracting text from PDF: {pdf_path}")
         raw_text = self.extract_text_from_pdf(pdf_path)
 
         if not raw_text:

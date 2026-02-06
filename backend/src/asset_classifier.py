@@ -1,17 +1,20 @@
+import logging
 from io import BytesIO
 
 import requests
 import torch
+from fastapi import Depends
 from PIL import Image
-from transformers import CLIPModel, CLIPProcessor
+
+from .services.ml_service import MLService
+
+logger = logging.getLogger(__name__)
 
 
 class AssetClassifier:
-    def __init__(self):
+    def __init__(self, ml_service: MLService = Depends(MLService)):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model_id = "openai/clip-vit-base-patch32"
-        self.model = CLIPModel.from_pretrained(self.model_id).to(self.device)
-        self.processor = CLIPProcessor.from_pretrained(self.model_id)
+        self.ml_service = ml_service
 
         # --- IMPROVED PROMPTS ---
         self.labels = {
@@ -84,16 +87,20 @@ class AssetClassifier:
             return "LOGO", 1.0
 
         if img is None:
-            print(f"Error loading image: {status}")
+            logger.error(f"Error loading image: {status}")
             return None, 0.0
 
         # Process inputs
-        inputs = self.processor(
+        # Use lazy-loaded models from MLService
+        processor = self.ml_service.clip_processor
+        model = self.ml_service.clip_model
+
+        inputs = processor(
             text=self.flat_labels, images=img, return_tensors="pt", padding=True
         ).to(self.device)
 
         with torch.no_grad():
-            outputs = self.model(**inputs)
+            outputs = model(**inputs)
 
         probs = outputs.logits_per_image.softmax(dim=1)
         best_idx = probs.argmax().item()
@@ -119,7 +126,11 @@ class AssetClassifier:
             return statuses
 
         # Process all images in one batch
-        inputs = self.processor(
+        # Process all images in one batch
+        processor = self.ml_service.clip_processor
+        model = self.ml_service.clip_model
+
+        inputs = processor(
             text=self.flat_labels,
             images=images,  # List of images
             return_tensors="pt",
@@ -127,7 +138,7 @@ class AssetClassifier:
         ).to(self.device)
 
         with torch.no_grad():
-            outputs = self.model(**inputs)
+            outputs = model(**inputs)
 
         # logits_per_image is now (batch_size, num_labels)
         probs = outputs.logits_per_image.softmax(dim=1)
@@ -149,7 +160,9 @@ class AssetClassifier:
 
 if __name__ == "__main__":
     print("Hello World")
-    classifier = AssetClassifier()
+    # Manual DI for standalone script execution
+    ml_service = MLService()
+    classifier = AssetClassifier(ml_service=ml_service)
 
     # Example 1: Logo
     img_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Google_2015_logo.svg/1200px-Google_2015_logo.svg.png"

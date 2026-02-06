@@ -7,7 +7,7 @@ from pdf2image import convert_from_path
 from src.brand_auditor import IntegratedBrandAuditor
 
 # Configure Logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 # Mock Brand Kit
 SLACK_KIT = {

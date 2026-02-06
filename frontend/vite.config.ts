@@ -10,6 +10,20 @@ export default defineConfig(({ mode }) => {
       host: true,
       port: 5173,
       strictPort: true,
+      proxy: {
+        '/brandkit': {
+          target: 'http://backend:8000',
+          changeOrigin: true,
+        },
+        '/brandkits': {
+          target: 'http://backend:8000',
+          changeOrigin: true,
+        },
+        '/projects': {
+          target: 'http://backend:8000',
+          changeOrigin: true,
+        },
+      },
     },
     plugins: [react(), tailwindcss()],
     define: {

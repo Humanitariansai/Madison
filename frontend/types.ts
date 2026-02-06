@@ -54,6 +54,7 @@ export interface BrandTypography {
   weights: string[];
   use_case?: string;
   usage?: string; // fallback
+  is_uploaded?: boolean;
 }
 
 export interface BrandLogoRule {
@@ -81,10 +82,11 @@ export interface BrandKit {
   created_at: string;
 
   // Optimized Schema
-  colors?: BrandColor[];           // Unified colors (simple hex or rich metadata)
+  colors?: BrandColor[];           // Unified colors
   color_tolerance?: number;
   typography?: BrandTypography[];
   logo?: BrandLogo;
+  logo_rules?: BrandLogo;          // Backend sends this as dict, mapped to BrandLogo interface
   brand_voice?: BrandVoice;
   assets?: ApiAsset[];
 

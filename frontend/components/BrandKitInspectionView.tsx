@@ -19,6 +19,64 @@ interface props {
 
 export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
   console.log("viewing brandkit", brandKit);
+  const [localBrandKit, setLocalBrandKit] = React.useState(brandKit);
+  const [uploadingFont, setUploadingFont] = React.useState<string | null>(null);
+
+  // Update local state when brandKit prop changes
+  React.useEffect(() => {
+    setLocalBrandKit(brandKit);
+  }, [brandKit]);
+
+  const handleFontUpload = async (fontFamily: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.ttf,.otf';
+
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      setUploadingFont(fontFamily);
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('font_family', fontFamily);
+
+      try {
+        const response = await fetch(`/brandkit/${brandKit.id}/fonts/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.detail || 'Upload failed');
+        }
+
+        const result = await response.json();
+
+        // Update local state to reflect upload
+        setLocalBrandKit(prev => ({
+          ...prev,
+          typography: prev.typography.map(font =>
+            font.family === fontFamily
+              ? { ...font, is_uploaded: true, filename: result.filename }
+              : font
+          ),
+        }));
+
+        console.log(`${fontFamily} uploaded successfully!`);
+      } catch (error) {
+        console.error('Font upload failed:', error);
+        alert(`Font upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } finally {
+        setUploadingFont(null);
+      }
+    };
+
+    input.click();
+  };
+
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden animate-in fade-in duration-300">
       {/* Main Content Area */}
@@ -73,19 +131,19 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
                 </div>
 
                 {/* Brand Voice Chips */}
-                {brandKit.brand_voice_attributes && (
+                {brandKit.brand_voice?.attributes && (
                   <div className="flex flex-wrap gap-2 mb-6">
-                    {brandKit.brand_voice_attributes.map(v => (
+                    {brandKit.brand_voice.attributes.map((v: string) => (
                       <Badge key={v} variant="secondary" className="px-3 py-1 font-normal">
                         {v}
                       </Badge>
                     ))}
 
-                    {brandKit.forbidden_keywords && brandKit.forbidden_keywords.length > 0 && (
+                    {brandKit.brand_voice.forbidden_keywords && brandKit.brand_voice.forbidden_keywords.length > 0 && (
                       <div className="flex items-center gap-2 ml-2 border-l pl-4">
                         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Avoid</span>
                         <div className="flex gap-1">
-                          {brandKit.forbidden_keywords.map(k => (
+                          {brandKit.brand_voice.forbidden_keywords.map((k: string) => (
                             <Badge key={k} variant="outline" className="text-red-500 border-red-200 bg-red-50 hover:bg-red-50">
                               {k}
                             </Badge>
@@ -136,7 +194,8 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
               <div className="p-6 max-w-7xl mx-auto space-y-8">
 
                 {/* LOGO RULES SECTION */}
-                {brandKit.logo_rules && brandKit.logo_rules.length > 0 && (
+                {/* Access via logo_rules.rules */}
+                {brandKit.logo_rules?.rules && brandKit.logo_rules.rules.length > 0 && (
                   <div className="grid md:grid-cols-2 gap-4">
                     {/* DO Rules */}
                     <Card className="border-green-200 bg-green-50/10">
@@ -147,7 +206,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
                       </CardHeader>
                       <CardContent>
                         <ul className="space-y-2">
-                          {brandKit.logo_rules.filter(r => r.type === 'DO').map((r, i) => (
+                          {brandKit.logo_rules.rules.filter(r => r.type === 'DO').map((r, i) => (
                             <li key={i} className="text-sm text-foreground flex items-start gap-2">
                               <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" /> {r.rule}
                             </li>
@@ -165,7 +224,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
                       </CardHeader>
                       <CardContent>
                         <ul className="space-y-2">
-                          {brandKit.logo_rules.filter(r => r.type === 'DONT').map((r, i) => (
+                          {brandKit.logo_rules.rules.filter(r => r.type === 'DONT').map((r, i) => (
                             <li key={i} className="text-sm text-foreground flex items-start gap-2">
                               <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" /> {r.rule}
                             </li>
@@ -185,12 +244,11 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
                     <p className="font-medium text-muted-foreground group-hover:text-primary transition-colors">Add Logo Variant</p>
                   </button>
 
-                  {/* Logo Cards */}
-                  {brandKit.logos && brandKit.logos.map((logo) => (
+                  {/* Logo Cards: Constructed from Assets */}
+                  {brandKit.assets?.filter(a => a.category === 'LOGO').map((logo) => (
                     <Card key={logo.id} className="overflow-hidden group hover:shadow-md transition-all">
                       <div className="aspect-video bg-muted/30 flex items-center justify-center p-8 relative border-b">
-                        {/* Visual Placeholder */}
-                        <div className="text-4xl font-bold text-muted-foreground/20">LOGO</div>
+                        <img src={logo.url || logo.path} alt="Logo" className="max-h-full max-w-full object-contain" />
 
                         {/* Overlay Actions */}
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
@@ -199,8 +257,8 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
                         </div>
                       </div>
                       <CardHeader className="pb-3 pt-3">
-                        <CardTitle className="text-base">{logo.name}</CardTitle>
-                        <CardDescription>Variant: {logo.variant}</CardDescription>
+                        <CardTitle className="text-base truncate">{logo.filename}</CardTitle>
+                        <CardDescription>ID: {logo.id.substring(0, 8)}</CardDescription>
                       </CardHeader>
                     </Card>
                   ))}
@@ -214,8 +272,8 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
             <ScrollArea className="h-full w-full">
               <div className="p-6 max-w-7xl mx-auto">
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                  {/* Use Rich Colors if available, else fall back to basic colors */}
-                  {(brandKit.rich_colors && brandKit.rich_colors.length > 0 ? brandKit.rich_colors : brandKit.colors)?.map((color, idx) => (
+                  {/* Colors */}
+                  {brandKit.colors?.map((color, idx) => (
                     <div key={idx} className="group cursor-pointer">
                       <div
                         className="h-32 rounded-t-xl shadow-inner relative flex items-center justify-center border-b"
@@ -268,27 +326,61 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
           <TabsContent value="typography" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex flex-col">
             <ScrollArea className="h-full w-full">
               <div className="p-6 max-w-5xl mx-auto space-y-4">
-                {brandKit.typography && brandKit.typography.map((font, idx) => (
-                  <Card key={idx} className="flex items-center p-6 justify-between hover:shadow-md transition-shadow">
-                    <div>
-                      {/* Preview of the font */}
-                      <h3 className="text-4xl mb-4 text-foreground" style={{ fontFamily: font.family }}>
-                        The quick brown fox jumps over...
-                      </h3>
-                      <div className="flex gap-4 items-center">
-                        <Badge variant="secondary" className="text-lg px-3 py-1 bg-muted">{font.family}</Badge>
-                        <div className="text-sm text-muted-foreground">
-                          Usage: <span className="font-medium text-foreground">{font.use_case || font.usage || 'Primary'}</span>
+                {localBrandKit.typography && localBrandKit.typography.map((font, idx) => (
+                  <Card key={idx} className="flex flex-col p-6 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        {/* Preview of the font */}
+                        <h3 className="text-4xl mb-4 text-foreground" style={{ fontFamily: font.family }}>
+                          The quick brown fox jumps over...
+                        </h3>
+                        <div className="flex gap-4 items-center flex-wrap">
+                          <Badge variant="secondary" className="text-lg px-3 py-1 bg-muted">{font.family}</Badge>
+                          <div className="text-sm text-muted-foreground">
+                            Usage: <span className="font-medium text-foreground">{font.use_case || font.usage || 'Primary'}</span>
+                          </div>
+                          {font.is_uploaded === false && (
+                            <Badge variant="destructive" className="flex gap-1 items-center bg-red-100 text-red-800 hover:bg-red-200 border-red-200">
+                              <AlertTriangle size={12} />
+                              File Missing
+                            </Badge>
+                          )}
+                          {font.is_uploaded === true && (
+                            <Badge variant="default" className="flex gap-1 items-center bg-green-100 text-green-800 border-green-200">
+                              <ShieldCheck size={12} />
+                              Uploaded
+                            </Badge>
+                          )}
                         </div>
+
+                        {/* Upload Button for Missing Fonts */}
+                        {font.is_uploaded === false && (
+                          <div className="mt-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleFontUpload(font.family)}
+                              disabled={uploadingFont === font.family}
+                              className="gap-2"
+                            >
+                              <Upload size={16} />
+                              {uploadingFont === font.family ? 'Uploading...' : 'Upload Font File'}
+                            </Button>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Upload .ttf or .otf file for "{font.family}"
+                            </p>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      {font.weights.map(w => (
-                        <div key={w} className="border rounded px-3 py-2 text-center min-w-[80px] bg-muted/10">
-                          <span className="block text-xs text-muted-foreground mb-1">Weight</span>
-                          <span className="font-medium text-sm text-foreground">{w}</span>
-                        </div>
-                      ))}
+                      <div className="flex gap-2 ml-4">
+
+                        {font.weights.map(w => (
+                          <div key={w} className="border rounded px-3 py-2 text-center min-w-[80px] bg-muted/10">
+                            <span className="block text-xs text-muted-foreground mb-1">Weight</span>
+                            <span className="font-medium text-sm text-foreground">{w}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </Card>
                 ))}

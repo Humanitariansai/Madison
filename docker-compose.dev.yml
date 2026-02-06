@@ -25,6 +25,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       LLM_MODEL: ${LLM_MODEL}
+      PYTHONUNBUFFERED: 1
       # If using Ollama or external services on host matching original config, use host.docker.internal
       # or assure they are containerized. For now assuming self-contained logic or access to web.
     ports:
@@ -38,7 +39,7 @@ services:
       - ./backend/data/models:/app/data/models
       # Mount code specifically for development hot-reloading
       - ./backend/src:/app/src
-    command: ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "debug"]
 
   frontend:
     build:

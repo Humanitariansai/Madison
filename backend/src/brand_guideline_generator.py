@@ -1,10 +1,17 @@
+import logging
+from typing import Optional
+
 import numpy as np
 from sklearn.cluster import KMeans
+
+from .brand_guideline_extractor import ExtractedBrandInfo
+
+logger = logging.getLogger(__name__)
 
 
 class BrandGuidelineGenerator:
     def __init__(self):
-        print("Initializing Generator...")
+        logger.info("Initializing BrandGuidelineGenerator service")
 
     def _extract_palette(self, images, k=5):
         """Extracts the Master Color Palette from a list of PIL Images"""
@@ -42,7 +49,9 @@ class BrandGuidelineGenerator:
             ratios.append(round(w / h, 2))
         return sorted(list(set(ratios)))
 
-    def generate_brand_kit(self, classified_assets, extracted_rules=None):
+    def generate_brand_kit(
+        self, classified_assets, extracted_rules: Optional[ExtractedBrandInfo]
+    ):
         """
         Input:
             - classified_assets: list of dicts {'image': PIL_Obj, 'type': 'LOGO'}
@@ -53,7 +62,9 @@ class BrandGuidelineGenerator:
         imagery = [x["image"] for x in classified_assets if x["type"] == "IMAGERY"]
 
         # 1. Colors - Unified structure
-        print("Extracting Color Palette...")
+        logger.info(
+            f"Extracting color palette from {len(logos + imagery)} combined assets"
+        )
         extracted_hex_colors = self._extract_palette(logos + imagery)
 
         # Build unified colors array
@@ -66,7 +77,7 @@ class BrandGuidelineGenerator:
             colors = [{"hex": hex_color} for hex_color in extracted_hex_colors]
 
         # 2. Logo - Unified structure
-        print("Calculating Logo Rules...")
+        logger.info("Calculating Logo Rules...")
         logo_ratios = self._extract_ratios(logos)
         logo = {"allowed_ratios": logo_ratios, "rules": []}
 
@@ -92,8 +103,16 @@ class BrandGuidelineGenerator:
                 brand_name = "Humanitarians.AI"
 
             # Override with PDF data
-            if extracted_rules.forbidden_keywords:
-                brand_voice["forbidden_keywords"] = extracted_rules.forbidden_keywords
+            if extracted_rules.brand_voice.forbidden_keywords:
+                brand_voice["forbidden_keywords"] = (
+                    extracted_rules.brand_voice.forbidden_keywords
+                )
+            if extracted_rules.brand_voice.frequent_keywords:
+                brand_voice["frequent_keywords"] = (
+                    extracted_rules.brand_voice.frequent_keywords
+                )
+            if extracted_rules.brand_voice.attributes:
+                brand_voice["attributes"] = extracted_rules.brand_voice.attributes
         else:
             brand_name = "Humanitarians.AI"
 

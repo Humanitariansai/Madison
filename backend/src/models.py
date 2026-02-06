@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 from uuid import uuid4
 
@@ -25,7 +25,7 @@ class Asset(SQLModel, table=True):
     path: str  # Internal path: "uploads/xyz/font.ttf"
     url: str  # External path: "/uploads/xyz/font.ttf"
 
-    upload_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    upload_date: datetime = Field(default_factory=lambda: datetime.utcnow())
 
     # Metadata for specific types (e.g. image dims, file size)
     metadata_json: dict = Field(default={}, sa_column=Column(JSON_TYPE))
@@ -77,6 +77,10 @@ class BrandFont(SQLModel, table=True):
     # Link to the actual physical file (e.g. OpenSans-Bold.ttf)
     primary_asset_id: Optional[str] = Field(default=None, foreign_key="asset.id")
 
+    # Track if font file has been uploaded
+    is_uploaded: bool = Field(default=False)
+    filename: Optional[str] = None  # Uploaded font filename
+
     brand_kit: "BrandKit" = Relationship(back_populates="typography")
     # We could relationally link asset here too if needed
 
@@ -98,7 +102,7 @@ class ProjectFile(SQLModel, table=True):
     # Keeping violations as JSONB is acceptable for variable report data
     violations: List[dict] = Field(default=[], sa_column=Column(JSON_TYPE))
 
-    upload_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    upload_date: datetime = Field(default_factory=lambda: datetime.utcnow())
 
     project: "Project" = Relationship(back_populates="files")
 
@@ -112,7 +116,7 @@ class BrandKit(SQLModel, table=True):
     id: str = Field(primary_key=True)
     brand_name: str
     title: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime)
 
     # Settings
     color_tolerance: int = Field(default=50)
@@ -133,7 +137,7 @@ class BrandKit(SQLModel, table=True):
 class Project(SQLModel, table=True):
     id: str = Field(primary_key=True)
     title: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.utcnow())
 
     brand_kit_id: str = Field(foreign_key="brandkit.id")
 
@@ -185,6 +189,8 @@ class BrandFontRead(SQLModel):
     weights: List[str] = []
     use_case: str
     primary_asset_id: Optional[str] = None
+    is_uploaded: bool = False
+    filename: Optional[str] = None
 
     # pyrefly: ignore [deprecated]
     @root_validator(pre=True)
@@ -194,6 +200,14 @@ class BrandFontRead(SQLModel):
             values = values.__dict__
         if "family_name" in values:
             values["family"] = values["family_name"]
+
+        # Compute is_uploaded from primary_asset_id presence
+        # If primary_asset_id is not None, we assume file exists
+        if "primary_asset_id" in values and values["primary_asset_id"]:
+            values["is_uploaded"] = True
+        else:
+            values["is_uploaded"] = False
+
         return values
 
 
