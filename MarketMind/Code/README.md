@@ -3,104 +3,97 @@
 
 🔗 **Live App:** https://marketmind-17.onrender.com/
 
-MarketMind is an AI-driven market research platform that automates **competitor pricing, sentiment insights, feature scoring (radar), market growth trends, and executive strategy synthesis** using a multi-agent architecture (CrewAI) powered by large language models.
+MarketMind is a Streamlit + CrewAI market research app that generates **pricing intel, source-aware sentiment, feature benchmarking, product demand trend**, and a **final strategy report** — all written as exportable artifacts in `./outputs/` and visualized in a clean dashboard.
 
-Built for **founders, product managers, and strategy teams** who want fast, structured market intelligence without manual research overhead.
+Built for **founders, product managers, and strategy teams** who want fast, structured market intelligence with repeatable outputs.
 
 ---
 
 ## 🚀 What MarketMind Does
 
-MarketMind runs a multi-stage AI pipeline to generate:
+MarketMind runs a multi-stage pipeline to generate:
 
-- 💰 **Competitor + Product pricing (AI estimated)** saved as JSON
-- 💬 **Customer sentiment (AI summary)** saved as JSON + Markdown
-- ⚙️ **Feature scoring for product vs competitors (AI scores 0–10)** for radar chart
-- 📈 **Market growth projection (AI estimated)** saved as JSON
-- 🧾 **Executive-ready strategy report** (Markdown)
+- 💰 **Product + competitor pricing** → `competitor_prices.json`
+- 💬 **Source-aware sentiment** (single truth used by chart + report)  
+  → `sentiment_verified.json` + `review_sentiment.md`
+- ⚙️ **Feature scores (0–10)** for Product vs Competitors → `feature_scores.json` (radar chart)
+- 📈 **Product demand / growth trend (product-level, not generic industry CAGR)**  
+  → `market_growth.json` (line chart)
+- 🧾 **Executive-ready synthesis report** → `final_market_strategy_report.md`
 
-All outputs are written to `./outputs/` and visualized in the Streamlit dashboard.
+All outputs are saved to `./outputs/` and visualized in the Streamlit UI.
 
 ---
 
-## ✅ What’s New (Latest Changes)
+## ✅ What’s New (Latest Behavior)
 
-### 1) Custom comparison inputs (user-driven)
-Instead of hardcoded competitors/features, the app now lets users **enter their own**:
+### 1) User-driven comparisons (no hardcoding)
+Users can enter their own:
+- **Competitors** (comma or newline separated)
+- **Features to compare** (comma or newline separated)
 
-- **Competitors** (comma-separated)
-- **Features to compare** (comma-separated)
+These inputs are passed into `run_analysis()` and the AI generates artifacts specifically for the user’s selection.
 
-These inputs are passed directly into `run_analysis()` so the AI generates pricing + feature scores specifically for the user’s selection.
+### 2) Feature comparison table output is restored (clean “before format”)
+MarketMind writes:
+- `outputs/feature_comparison.md`
 
-### 2) Stable outputs handling (fix for Streamlit reruns)
-Streamlit reruns the script often. The app now **does NOT delete outputs on every rerun**.
+This report uses:
+- **Real competitor names as columns** (no “Competitor A/B”)
+- **ONLY user-entered features**
+- **Price row patched from pricing JSON** (source of truth)
 
-- `outputs/` is only cleared **when the user clicks** **Run Market Research Analysis**
-- This prevents missing JSON files and fixes radar/pricing charts failing after UI updates
+### 3) Single source of truth for sentiment (fixes mismatches)
+Sentiment now writes:
+- `outputs/sentiment_verified.json`  ✅ **Used by the pie chart + report**
+- `outputs/review_sentiment.md` (human-readable summary)
 
-### 3) Feature radar now reads AI scores from JSON
-The radar chart is now driven by:
+This prevents the donut chart and markdown report from showing different sentiment.
 
-- `outputs/feature_scores.json`
+### 4) Themes hidden by default (cleaner, less “token noise”)
+`review_sentiment.md` **does not show themes by default** to keep it customer-friendly.
+(Themes can be added back later as an optional toggle if needed.)
 
-The app loads this JSON, validates required fields (`product`, `feature`, `score`), and renders a radar chart using Plotly.
-
-### 4) Pricing chart uses AI JSON output (and hover-only values)
-Competitor pricing is now driven by:
-
-- `outputs/competitor_prices.json`
-
-The chart:
-- includes **product + competitors**
-- removes bar labels (values shown on hover)
+### 5) Product trend is product-specific
+The growth line chart is based on **product demand trend** (product-level), not generic industry growth.
 
 ---
 
 ## 🧩 Key Features
 
-- **Multi-Agent Architecture (CrewAI)**
+- **Multi-Agent Orchestration (CrewAI)**
   - Strategy Consultant
-  - Competitor Analyst
+  - Competitive Intelligence Analyst
   - Customer Persona Analyst
-  - Review/Sentiment Analyst
+  - Sentiment & Review Analyst
   - Strategy Synthesizer
 
-- **User-Entered Comparisons**
-  - Add your own competitors + features
-  - Charts update based on those inputs
-
 - **Interactive Dashboard**
-  - Sentiment pie chart (from JSON)
-  - Pricing bar chart (from JSON)
-  - Feature radar (from JSON)
-  - Market growth line chart (from JSON)
+  - Sentiment donut chart (from `sentiment_verified.json`)
+  - Pricing bar chart (from `competitor_prices.json`)
+  - Feature radar (from `feature_scores.json`)
+  - Product demand trend (from `market_growth.json`)
+  - Feature comparison markdown table (from `feature_comparison.md`)
+  - Full report viewer for all `.md` outputs
 
 - **Exportable Research**
-  - Generates structured `.md` reports suitable for decks and docs
+  - Generates `.md` reports that can be pasted into docs, decks, and product briefs
 
 ---
 
 ## 🏗️ Architecture Overview
 
-Streamlit UI (app.py)
-|
-v
-run_analysis() <-- main.py
-|
-v
-CrewAI Orchestration
-├─ Agents (agents.py)
-├─ Tasks (tasks.py) -> outputs strict JSON artifacts
-└─ Tools (feature comparison, scraping, sentiment, etc.)
-|
-v
-Artifacts written to ./outputs/
-├─ competitor_prices.json
-├─ feature_scores.json
-├─ market_growth.json
-├─ sentiment_metrics.json
-└─ Markdown reports (*.md)
+Streamlit UI (app.py)  
+↓  
+`run_analysis()` (main.py)  
+↓  
+CrewAI Orchestration  
+- Agents (agents.py)  
+- Tasks (tasks.py) → strict JSON + markdown outputs  
+↓  
+Artifacts written to `./outputs/`  
+↓  
+Streamlit dashboard visualizes outputs
 
 ---
 
@@ -108,58 +101,54 @@ Artifacts written to ./outputs/
 
 MarketMind/
 │
-├── app.py # Streamlit dashboard (UI)
-├── main.py # Analysis runner & orchestration entrypoint
-├── agents.py # CrewAI agent definitions
-├── tasks.py # Task definitions for agents (STRICT JSON outputs)
-├── models.py # Data models / schemas
+├── app.py                     # Streamlit dashboard (UI)
+├── main.py                    # Orchestration + artifact writing
+├── agents.py                  # CrewAI agent definitions
+├── tasks.py                   # Task definitions (STRICT JSON outputs)
 │
 ├── tools/
-│ ├── scrape_pipeline.py # Web search, scraping & content extraction
-│ └── review_scraper.py # Review scraping & sentiment analysis (NLTK VADER)
+│   └── scrape_pipeline.py     # Search + scrape tooling (if enabled)
 │
-├── outputs/ # Generated artifacts (JSON + Markdown)
-│ ├── competitor_prices.json
-│ ├── feature_scores.json
-│ ├── market_growth.json
-│ ├── sentiment_metrics.json
-│ ├── review_sentiment.md
-│ ├── feature_comparison.md
-│ └── final_market_strategy_report.md
+├── outputs/                   # Generated artifacts (JSON + Markdown)
+│   ├── competitor_prices.json
+│   ├── feature_scores.json
+│   ├── market_growth.json
+│   ├── sentiment_verified.json
+│   ├── sentiment_metrics.json
+│   ├── review_sentiment.md
+│   ├── feature_comparison.md
+│   ├── research_plan.md
+│   ├── customer_analysis.md
+│   └── final_market_strategy_report.md
 │
-├── requirements.txt # Python dependencies
+├── requirements.txt
 └── README.md
 
 ---
 
-## 📦 Tech Stack
+## 📄 Outputs (What gets generated)
 
-### Frontend / UI
-- Streamlit
-- Plotly
-- Pandas
+### JSON Artifacts (for charts)
+- `competitor_prices.json`  
+- `feature_scores.json`  
+- `market_growth.json`  *(product demand trend)*
+- `sentiment_verified.json`  ✅ *(pie chart + report source of truth)*
+- `sentiment_metrics.json` *(derived convenience metrics)*
 
-### AI & Agents
-- OpenAI API
-- CrewAI
-
-### Web Scraping & NLP (if enabled in tools)
-- BeautifulSoup
-- Readability-lxml
-- Trafilatura
-- LangDetect
-- NLTK (VADER sentiment)
-
-### Deployment
-- Render
+### Markdown Reports (for reading/export)
+- `research_plan.md`
+- `customer_analysis.md`
+- `feature_comparison.md`
+- `review_sentiment.md`
+- `final_market_strategy_report.md`
 
 ---
 
 ## ⚙️ Environment Variables
 
-Set the following variables in **Render → Environment Variables** (or locally via `.env`):
+Set these in **Render → Environment Variables** (or locally with `.env`):
 
 ```env
 OPENAI_API_KEY=your_openai_api_key
 SERPER_API_KEY=your_serper_api_key
-
+LOG_LEVEL=INFO
