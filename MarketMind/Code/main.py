@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 import traceback
@@ -76,7 +77,7 @@ def _normalize_sentiment_payload(payload: dict, product_name: str) -> dict:
 
     total = pos + neg + neu
     if total <= 0:
-        # safe fallback (but still trustworthy because no sources)
+        # safe fallback (still marked as unverified unless sources exist)
         pos, neg, neu = 60, 30, 10
         total = 100
 
@@ -110,8 +111,7 @@ def _normalize_sentiment_payload(payload: dict, product_name: str) -> dict:
 
 def feature_comparison_json_to_md(payload: dict) -> str:
     """
-    Clean markdown table format (the “before format” you want).
-    Uses actual competitor names as columns (no Competitor A/B).
+    Clean markdown table format (your “before format”).
     """
     title = payload.get("title", "Feature Comparison Report")
     industry = payload.get("industry", "")
@@ -238,6 +238,42 @@ def _write_review_sentiment_md(outputs_dir: str, payload: dict, show_themes: boo
     return path
 
 
+def _remove_timeline_section(md_text: str) -> str:
+    """
+    Removes sections like:
+    - '## Timeline'
+    - '### Implementation Timeline'
+    (and any content until the next same/higher header)
+    """
+    if not md_text:
+        return md_text
+
+    lines = md_text.splitlines()
+    out = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = re.match(r"^(#{2,6})\s+(.*)\s*$", line.strip())
+        if m:
+            level = len(m.group(1))
+            title = m.group(2).strip().lower()
+            if "timeline" in title:
+                # skip until next header of same or higher importance (<= level)
+                i += 1
+                while i < len(lines):
+                    nxt = lines[i]
+                    m2 = re.match(r"^(#{2,6})\s+.*\s*$", nxt.strip())
+                    if m2 and len(m2.group(1)) <= level:
+                        break
+                    i += 1
+                continue
+        out.append(line)
+        i += 1
+
+    cleaned = "\n".join(out).strip() + "\n"
+    return cleaned
+
+
 # -------------------------
 # main entry
 # -------------------------
@@ -292,12 +328,10 @@ def run_analysis(
             competitor_agent, product_name, industry, competitors, features
         )
 
-        # ✅ FIXED ORDER: tasks.py expects (agent, product_name, industry, geography, competitors)
         growth_task = tasks.market_growth_json_task(
             competitor_agent, product_name, industry, geography, competitors
         )
 
-        # sentiment task (alias works if your tasks.py defines sentiment_verified_json_task)
         review_task = tasks.sentiment_verified_json_task(
             sentiment_agent, product_name, industry, sources=[]
         )
@@ -322,7 +356,6 @@ def run_analysis(
             ],
             verbose=True,
         )
-
         crew.kickoff()
 
         outputs_dir = "outputs"
@@ -349,7 +382,6 @@ def run_analysis(
             features,
             pricing_json,
         )
-
         fc_crew = Crew(agents=[competitor_agent], tasks=[fc_task], verbose=True)
         fc_crew.kickoff()
 
@@ -359,7 +391,6 @@ def run_analysis(
             "summary": "Fallback feature comparison.",
             "comparison_table": [],
         }
-
         fc_payload = patch_price_row_from_pricing_json(fc_payload, pricing_json)
 
         feature_md = feature_comparison_json_to_md(fc_payload)
@@ -387,8 +418,6 @@ def run_analysis(
             "growth_percent": [0, 0, 0, 0],
             "rationale": "Fallback demand trend.",
         }
-
-        # tolerate older schema that returns industry/geography
         if "product" not in growth_json:
             growth_json["product"] = product_name
         if "geography" not in growth_json:
@@ -405,15 +434,12 @@ def run_analysis(
             "sentiment": {"positive": 60, "negative": 30, "neutral": 10},
             "quotes": [],
         }
-
         sentiment_payload = _normalize_sentiment_payload(raw_sentiment, product_name)
 
-        # ✅ This file should be used by BOTH pie chart + md (app.py should read this)
         sentiment_verified_path = os.path.join(outputs_dir, "sentiment_verified.json")
         _write_json(sentiment_verified_path, sentiment_payload)
         files_written.append(sentiment_verified_path)
 
-        # optional convenience metrics file (derived from verified)
         sentiment_metrics = sentiment_payload.get("sentiment", {"positive": 60, "negative": 30, "neutral": 10})
         sentiment_json_path = os.path.join(outputs_dir, "sentiment_metrics.json")
         _write_json(sentiment_json_path, sentiment_metrics)
@@ -422,11 +448,12 @@ def run_analysis(
         review_md_path = _write_review_sentiment_md(outputs_dir, sentiment_payload, show_themes=False)
         files_written.append(review_md_path)
 
-        # ---- Markdown reports (always write like “before”) ----
+        # ---- Markdown reports ----
+        research_plan_clean = _remove_timeline_section(str(getattr(planning_task, "output", "") or ""))
         md_map = {
-            "research_plan.md": getattr(planning_task, "output", ""),
-            "customer_analysis.md": getattr(persona_task, "output", ""),
-            "final_market_strategy_report.md": getattr(synthesis_task, "output", ""),
+            "research_plan.md": research_plan_clean,
+            "customer_analysis.md": str(getattr(persona_task, "output", "") or "").strip() + "\n",
+            "final_market_strategy_report.md": str(getattr(synthesis_task, "output", "") or "").strip() + "\n",
         }
         for name, content in md_map.items():
             path = os.path.join(outputs_dir, name)
@@ -444,7 +471,3 @@ def run_analysis(
 
 if __name__ == "__main__":
     run_analysis()
-
-
-
-
