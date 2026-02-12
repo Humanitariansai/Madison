@@ -20,6 +20,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   // Validate file type against accept prop
   const validateFileType = useCallback((file: File): boolean => {
@@ -106,11 +107,11 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
-        onClick={() => document.getElementById('hidden-file-input')?.click()}
+        onClick={() => inputRef.current?.click()}
       >
         <input
+          ref={inputRef}
           type="file"
-          id="hidden-file-input"
           className="hidden"
           accept={accept}
           multiple={multiple}
