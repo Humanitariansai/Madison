@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
 # Copy the project configuration and source code
 COPY pyproject.toml .
 COPY src/ src/
+COPY data/models/ /data/models/
 
 # Install the dependencies
 # using pip to install the package in editable mode or just dependencies
