@@ -2,7 +2,6 @@ import logging
 
 import cv2
 import numpy as np
-import pytesseract
 import torch
 from pdf2image import convert_from_path
 from PIL import Image, ImageStat
@@ -82,6 +81,11 @@ class IntegratedBrandAuditor:
                 with torch.no_grad():
                     image_features = self.ml.clip_model.get_image_features(**inputs)
 
+                # Verified: In this env, returns BaseModelOutputWithPooling.
+                # The 512-dim projection is in pooler_output.
+                if not isinstance(image_features, torch.Tensor):
+                    image_features = image_features.pooler_output
+
                 # Normalize
                 self.logo_embeddings = image_features / image_features.norm(
                     dim=-1, keepdim=True
@@ -107,12 +111,7 @@ class IntegratedBrandAuditor:
 
                 # Defense
                 if not isinstance(feat, torch.Tensor):
-                    if hasattr(feat, "text_embeds"):
-                        feat = feat.text_embeds
-                    elif hasattr(feat, "pooler_output"):
-                        feat = feat.pooler_output
-                    else:
-                        feat = feat[0]
+                    feat = feat.pooler_output
 
                 self.tp_text_feats = feat / feat.norm(dim=-1, keepdim=True)
             logger.info("✅ Pre-computed 3rd Party Prompts.")
@@ -266,12 +265,7 @@ class IntegratedBrandAuditor:
 
                     # Defense against varying Transformers versions return types
                     if not isinstance(crop_embeddings, torch.Tensor):
-                        if hasattr(crop_embeddings, "image_embeds"):
-                            crop_embeddings = crop_embeddings.image_embeds
-                        elif hasattr(crop_embeddings, "pooler_output"):
-                            crop_embeddings = crop_embeddings.pooler_output
-                        else:
-                            crop_embeddings = crop_embeddings[0]
+                        crop_embeddings = crop_embeddings.pooler_output
 
                     # Normalize
                     crop_embeddings = crop_embeddings / crop_embeddings.norm(
@@ -720,144 +714,144 @@ class IntegratedBrandAuditor:
 
         return "PASS", "Text Colors Compliant", None
 
-    def audit_page(self, page_pil):
-        """
-        Audits a single PIL Image page.
-        Returns a list of dicts representing findings (logos, imagery, text).
-        """
-        page_results = []
+    # def audit_page(self, page_pil):
+    #     """
+    #     Audits a single PIL Image page.
+    #     Returns a list of dicts representing findings (logos, imagery, text).
+    #     """
+    #     page_results = []
 
-        page_cv = np.array(page_pil)
-        if len(page_cv.shape) == 3:
-            page_gray = cv2.cvtColor(page_cv, cv2.COLOR_RGB2GRAY)
-        else:
-            page_gray = page_cv  # Already gray
+    #     page_cv = np.array(page_pil)
+    #     if len(page_cv.shape) == 3:
+    #         page_gray = cv2.cvtColor(page_cv, cv2.COLOR_RGB2GRAY)
+    #     else:
+    #         page_gray = page_cv  # Already gray
 
-        # 1. LOGOS (Multi-Variant)
-        detected_logos = self._find_logos(page_gray)
-        logo_boxes_for_mask = []
+    #     # 1. LOGOS (Multi-Variant)
+    #     detected_logos = self._find_logos(page_gray)
+    #     logo_boxes_for_mask = []
 
-        for item in detected_logos:
-            x, y, w, h = item["bbox"]
-            crop = page_pil.crop((x, y, x + w, y + h))
-            status, metric = self._check_logo_compliance(crop, item["variant"])
+    #     for item in detected_logos:
+    #         x, y, w, h = item["bbox"]
+    #         crop = page_pil.crop((x, y, x + w, y + h))
+    #         status, metric = self._check_logo_compliance(crop, item["variant"])
 
-            page_results.append(
-                {
-                    "type": "LOGO",
-                    "bbox": item["bbox"],
-                    "status": status,
-                    "metric": metric,
-                    "variant": item["variant"]["name"],
-                }
-            )
-            logo_boxes_for_mask.append([x, y, w, h])
+    #         page_results.append(
+    #             {
+    #                 "type": "LOGO",
+    #                 "bbox": item["bbox"],
+    #                 "status": status,
+    #                 "metric": metric,
+    #                 "variant": item["variant"]["name"],
+    #             }
+    #         )
+    #         logo_boxes_for_mask.append([x, y, w, h])
 
-        # 2. IMAGERY (Generic, masking logos)
-        # img_boxes = self._find_imagery(page_gray, logo_boxes_for_mask)
-        # for box in img_boxes:
-        #     x, y, w, h = box
-        #     crop = page_pil.crop((x, y, x + w, y + h))
-        #     status, metric = self._check_imagery_vibe(crop)
+    #     # 2. IMAGERY (Generic, masking logos)
+    #     # img_boxes = self._find_imagery(page_gray, logo_boxes_for_mask)
+    #     # for box in img_boxes:
+    #     #     x, y, w, h = box
+    #     #     crop = page_pil.crop((x, y, x + w, y + h))
+    #     #     status, metric = self._check_imagery_vibe(crop)
 
-        #     page_results.append(
-        #         {"type": "IMAGERY", "bbox": box, "status": status, "metric": metric}
-        #     )
+    #     #     page_results.append(
+    #     #         {"type": "IMAGERY", "bbox": box, "status": status, "metric": metric}
+    #     #     )
 
-        # 3. TEXT & UNIFIED SMART MASK
-        # Use image_to_data to get bounding boxes for text masking + context awareness
-        try:
-            data = pytesseract.image_to_data(
-                page_gray, output_type=pytesseract.Output.DICT
-            )
-            # pyrefly: ignore [bad-index]
-            n_boxes = len(data["level"])
-            text_bboxes = []  # (x, y, w, h)
-            all_text_parts = []
+    #     # 3. TEXT & UNIFIED SMART MASK
+    #     # Use image_to_data to get bounding boxes for text masking + context awareness
+    #     try:
+    #         data = pytesseract.image_to_data(
+    #             page_gray, output_type=pytesseract.Output.DICT
+    #         )
+    #         # pyrefly: ignore [bad-index]
+    #         n_boxes = len(data["level"])
+    #         text_bboxes = []  # (x, y, w, h)
+    #         all_text_parts = []
 
-            for i in range(n_boxes):
-                # pyrefly: ignore [bad-index]
-                txt = data["text"][i].strip()
-                # pyrefly: ignore [missing-attribute]
-                conf = int(data.get("conf", [-1])[i])
-                if txt and conf > 0:
-                    all_text_parts.append(txt)
-                    x, y, w, h = (
-                        # pyrefly: ignore [bad-index]
-                        data["left"][i],
-                        # pyrefly: ignore [bad-index]
-                        data["top"][i],
-                        # pyrefly: ignore [bad-index]
-                        data["width"][i],
-                        # pyrefly: ignore [bad-index]
-                        data["height"][i],
-                    )
-                    text_bboxes.append((x, y, w, h))
+    #         for i in range(n_boxes):
+    #             # pyrefly: ignore [bad-index]
+    #             txt = data["text"][i].strip()
+    #             # pyrefly: ignore [missing-attribute]
+    #             conf = int(data.get("conf", [-1])[i])
+    #             if txt and conf > 0:
+    #                 all_text_parts.append(txt)
+    #                 x, y, w, h = (
+    #                     # pyrefly: ignore [bad-index]
+    #                     data["left"][i],
+    #                     # pyrefly: ignore [bad-index]
+    #                     data["top"][i],
+    #                     # pyrefly: ignore [bad-index]
+    #                     data["width"][i],
+    #                     # pyrefly: ignore [bad-index]
+    #                     data["height"][i],
+    #                 )
+    #                 text_bboxes.append((x, y, w, h))
 
-            # 3a. Check Tone (using joined text)
-            full_text = " ".join(all_text_parts)
-            status, metric = self._check_text_voice(full_text)
-            if status:
-                page_results.append(
-                    {
-                        "type": "TEXT_BODY",
-                        "bbox": [0, 0, page_pil.width, 50],
-                        "status": status,
-                        "metric": metric,
-                    }
-                )
+    #         # 3a. Check Tone (using joined text)
+    #         full_text = " ".join(all_text_parts)
+    #         status, metric = self._check_text_voice(full_text)
+    #         if status:
+    #             page_results.append(
+    #                 {
+    #                     "type": "TEXT_BODY",
+    #                     "bbox": [0, 0, page_pil.width, 50],
+    #                     "status": status,
+    #                     "metric": metric,
+    #                 }
+    #             )
 
-            # 4. COLOR COMPLIANCE (Smart Masking)
-            # Create Masks
-            mask_text = np.zeros(page_gray.shape, dtype=np.uint8)
-            for x, y, w, h in text_bboxes:
-                # Fill text regions with 255 (White)
-                # Dilate slightly to catch anti-aliasing
-                cv2.rectangle(mask_text, (x, y), (x + w, y + h), 255, -1)
+    #         # 4. COLOR COMPLIANCE (Smart Masking)
+    #         # Create Masks
+    #         mask_text = np.zeros(page_gray.shape, dtype=np.uint8)
+    #         for x, y, w, h in text_bboxes:
+    #             # Fill text regions with 255 (White)
+    #             # Dilate slightly to catch anti-aliasing
+    #             cv2.rectangle(mask_text, (x, y), (x + w, y + h), 255, -1)
 
-            # Mask Background = Invert Text Mask
-            mask_bg = cv2.bitwise_not(mask_text)
+    #         # Mask Background = Invert Text Mask
+    #         mask_bg = cv2.bitwise_not(mask_text)
 
-            # 4a. Audit Background (Exclude Text) via Histogram Coverage
-            # This fixes "Texture/Jolly Lush" issue
-            bg_status, bg_msg = self._audit_background_layer(
-                page_cv,
-                mask_bg,
-                self.bible.get("colors"),
-            )
+    #         # 4a. Audit Background (Exclude Text) via Histogram Coverage
+    #         # This fixes "Texture/Jolly Lush" issue
+    #         bg_status, bg_msg = self._audit_background_layer(
+    #             page_cv,
+    #             mask_bg,
+    #             self.bible.get("colors"),
+    #         )
 
-            page_results.append(
-                {
-                    "type": "PALETTE",
-                    "bbox": [0, 0, 50, 50],
-                    "status": bg_status,
-                    "metric": bg_msg,
-                }
-            )
+    #         page_results.append(
+    #             {
+    #                 "type": "PALETTE",
+    #                 "bbox": [0, 0, 50, 50],
+    #                 "status": bg_status,
+    #                 "metric": bg_msg,
+    #             }
+    #         )
 
-            # 4b. Audit Text Layer (Context & Contrast)
-            # This enforces "White Text on Aubergine"
-            txt_status, txt_msg, bad_bbox = self._audit_text_layer(
-                page_cv, text_bboxes, self.bible
-            )
-            if txt_status == "FAIL":
-                page_results.append(
-                    {
-                        "type": "TYPOGRAPHY",
-                        "bbox": bad_bbox
-                        if bad_bbox
-                        else [0, 0, page_pil.width, page_pil.height],
-                        "status": "FAIL",
-                        "metric": txt_msg,
-                    }
-                )
+    #         # 4b. Audit Text Layer (Context & Contrast)
+    #         # This enforces "White Text on Aubergine"
+    #         txt_status, txt_msg, bad_bbox = self._audit_text_layer(
+    #             page_cv, text_bboxes, self.bible
+    #         )
+    #         if txt_status == "FAIL":
+    #             page_results.append(
+    #                 {
+    #                     "type": "TYPOGRAPHY",
+    #                     "bbox": bad_bbox
+    #                     if bad_bbox
+    #                     else [0, 0, page_pil.width, page_pil.height],
+    #                     "status": "FAIL",
+    #                     "metric": txt_msg,
+    #                 }
+    #             )
 
-        except Exception as e:
-            print(f"Smart Audit failed: {e}")
-            # Fallback (safety)
-            pass
+    #     except Exception as e:
+    #         print(f"Smart Audit failed: {e}")
+    #         # Fallback (safety)
+    #         pass
 
-        return page_results
+    #     return page_results
 
     def audit_page_with_layout(self, page_pil: Image.Image, layout: PageLayout):
         """

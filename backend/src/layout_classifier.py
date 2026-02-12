@@ -47,6 +47,11 @@ class LayoutRegion(BaseModel):
     def get_area(self) -> float:
         return (self.bbox[2] - self.bbox[0]) * (self.bbox[3] - self.bbox[1])
 
+    def scale(self, scale_x: float, scale_y: float):
+        """In-place scaling of bounding box."""
+        x0, y0, x1, y1 = self.bbox
+        self.bbox = (x0 * scale_x, y0 * scale_y, x1 * scale_x, y1 * scale_y)
+
 
 class PageLayout(BaseModel):
     """
@@ -59,6 +64,12 @@ class PageLayout(BaseModel):
 
     def get_regions_by_type(self, region_type: LayoutType) -> list[LayoutRegion]:
         return [r for r in self.regions if r.type == region_type]
+
+    def scale(self, scale_x: float, scale_y: float):
+        """In-place scaling of all regions and page size."""
+        self.page_size = (self.page_size[0] * scale_x, self.page_size[1] * scale_y)
+        for region in self.regions:
+            region.scale(scale_x, scale_y)
 
 
 class LayoutClassifier(ABC):
