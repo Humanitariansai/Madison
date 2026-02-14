@@ -141,7 +141,7 @@ export function AppSidebar({ activeTab, setActiveTab, projects: propProjects, br
             </SidebarHeader>
             <SidebarContent>
                 <NavMain items={data.navMain} activeTab={activeTab} onTabChange={setActiveTab as any} />
-                <NavProjects projects={data.projects} />
+                {/* <NavProjects projects={data.projects} /> */}
                 <NavSecondary items={data.navSecondary} className="mt-auto" />
             </SidebarContent>
             <SidebarFooter>

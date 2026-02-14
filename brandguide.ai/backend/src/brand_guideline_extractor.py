@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import sys
 import time
 from typing import List, Optional
@@ -9,7 +8,10 @@ import pymupdf
 from litellm import completion, get_max_tokens, token_counter
 from pydantic import BaseModel
 
+from .config import settings
+
 # --- Data Models ---
+
 
 root_logger = logging.getLogger("src")
 root_logger.setLevel(logging.DEBUG)
@@ -211,7 +213,7 @@ class BrandGuidelineExtractor:
         """
 
         # Get model first (needed for token counting)
-        model = os.getenv("LLM_MODEL", "gemini/gemini-2.0-flash")
+        model = settings.LLM_MODEL
         logger.info(f"Parsing extracted text with LLM model: {model} (via LiteLLM)")
 
         # 1. Define the Schema for the LLM
@@ -249,10 +251,10 @@ class BrandGuidelineExtractor:
         for attempt in range(max_retries + 1):
             try:
                 # Get API key
-                api_key = os.getenv("GEMINI_API_KEY")
+                api_key = settings.GEMINI_API_KEY
                 if not api_key:
                     # Fallback to OPENAI_API_KEY if using openai
-                    api_key = os.getenv("OPENAI_API_KEY")
+                    api_key = settings.OPENAI_API_KEY
 
                 # pyrefly: ignore [not-callable]
                 response = completion(

@@ -1,7 +1,8 @@
+name: brandguide-dev
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: brandguide_db
+    container_name: brandguide_db_dev
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -20,7 +21,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: brandguide_backend
+    container_name: brandguide_backend_dev
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
@@ -45,7 +46,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    container_name: brandguide_frontend
+    container_name: brandguide_frontend_dev
     ports:
       - "5173:5173"
     depends_on:

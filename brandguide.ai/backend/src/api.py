@@ -25,6 +25,7 @@ from .asset_classifier import AssetClassifier
 from .brand_auditor import IntegratedBrandAuditor
 from .brand_guideline_extractor import BrandGuidelineExtractor
 from .brand_guideline_generator import BrandGuidelineGenerator
+from .config import settings
 from .database import get_session, init_db
 from .layout_classifier import LayoutClassifierFactory
 from .logging_conf import configure_logging
@@ -105,8 +106,8 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Semaphore to prevent OOM
-# Limit to 1 concurrent audits because Layout Analysis + ML is memory heavy
-AUDIT_SEMAPHORE = asyncio.Semaphore(1)
+# Configurable via AUDIT_CONCURRENCY env var (default: 1)
+AUDIT_SEMAPHORE = asyncio.Semaphore(settings.AUDIT_CONCURRENCY)
 
 
 @app.post("/brandkit", response_model=BrandKitRead)
@@ -358,6 +359,18 @@ def _process_audit_job(
                 # If we downsample image, we must scale bbox.
                 # Let's keep V2 full res for analysis, simple.
                 layout = layout_classifier.analyze_page(i + j, pdf_path=pdf_input)
+
+                # FIX: V2 Layout Classifier (PyMuPDF) returns PDF Points (72 DPI).
+                # Images are converted at higher DPI (default 150-200).
+                # We must scale the layout boxes to match the image dimensions.
+                img_w, img_h = p.size
+                if layout.page_size[0] > 0 and layout.page_size[1] > 0:
+                    scale_x = img_w / layout.page_size[0]
+                    scale_y = img_h / layout.page_size[1]
+                    if abs(scale_x - 1.0) > 0.01 or abs(scale_y - 1.0) > 0.01:
+                        logger.info(f"Scaling Layout: {scale_x:.2f}x, {scale_y:.2f}x")
+                        layout.scale(scale_x, scale_y)
+
                 chunk_layouts.append(layout)
                 chunk_cvs.append(np.array(p))
 
@@ -784,3 +797,56 @@ async def upload_font_file_to_existing_kit(
         except Exception:
             pass
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/brandkit/{brand_kit_id}/logo")
+async def upload_logo(
+    brand_kit_id: str,
+    files: List[UploadFile] = File(...),
+    session: AsyncSession = Depends(get_session),
+    classifier: AssetClassifier = Depends(AssetClassifier),
+):
+    """Upload logo files to the brand kit."""
+
+    # 1. Validate brand kit exists
+    brand_kit = await session.get(BrandKit, brand_kit_id)
+    if not brand_kit:
+        raise HTTPException(status_code=404, detail="Brand kit not found")
+
+    uploaded_assets = []
+    kit_dir = UPLOAD_DIR / brand_kit_id
+    await run_in_threadpool(kit_dir.mkdir, parents=True, exist_ok=True)
+
+    for file in files:
+        if not file.filename:
+            continue
+
+        # Sanitize filename
+        safe_filename = Path(file.filename).name
+        file_path = kit_dir / safe_filename
+
+        def save_file(f_path, f_obj):
+            with open(f_path, "wb") as buffer:
+                shutil.copyfileobj(f_obj, buffer)
+
+        await run_in_threadpool(save_file, file_path, file.file)
+
+        # 3. Create Asset Record
+        new_asset = Asset(
+            brand_kit_id=brand_kit_id,
+            category="LOGO",
+            filename=safe_filename,
+            path=str(file_path),
+            url=f"/uploads/{brand_kit_id}/{safe_filename}",
+        )
+
+        session.add(new_asset)
+        uploaded_assets.append(new_asset)
+
+    await session.commit()
+
+    # Refresh all assets to get their IDs populated
+    for asset in uploaded_assets:
+        await session.refresh(asset)
+
+    return uploaded_assets

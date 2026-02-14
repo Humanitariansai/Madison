@@ -15,7 +15,6 @@ dependencies = [
     "python-multipart>=0.0.21",
     "ruff>=0.14.10",
     "scikit-learn>=1.7.2",
-    "torch>=2.9.1",
     "transformers>=4.57.3",
     "uvicorn>=0.38.0",
     "sqlmodel>=0.0.16",
@@ -24,6 +23,7 @@ dependencies = [
     "greenlet>=3.3.1",
     "pymupdf4llm>=0.2.9",
     "pymupdf-layout>=1.26.6",
+    "torch>=2.10.0",
 ]
 
 [dependency-groups]

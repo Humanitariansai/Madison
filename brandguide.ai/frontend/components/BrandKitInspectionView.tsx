@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { BrandKit } from '@/types';
+import { API_BASE } from '../lib/api';
 
 
 interface props {
@@ -43,7 +44,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
       formData.append('font_family', fontFamily);
 
       try {
-        const response = await fetch(`/brandkit/${brandKit.id}/fonts/upload`, {
+        const response = await fetch(`${API_BASE}/brandkit/${brandKit.id}/fonts/upload`, {
           method: 'POST',
           body: formData,
         });
@@ -74,7 +75,57 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
       }
     };
 
+
     input.click();
+  };
+
+  const handleLogoUpload = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = 'image/png,image/jpeg,image/svg+xml,image/webp';
+
+    input.onchange = async (e) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (!files || files.length === 0) return;
+
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/brandkit/${brandKit.id}/logo`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.detail || 'Upload failed');
+        }
+
+        const newAssets = await response.json();
+
+        // Update local state to reflect upload
+        setLocalBrandKit(prev => ({
+          ...prev,
+          assets: [...(prev.assets || []), ...newAssets]
+        }));
+
+        console.log(`${newAssets.length} Logo(s) uploaded successfully!`);
+      } catch (error) {
+        console.error('Logo upload failed:', error);
+        alert(`Logo upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    };
+
+    input.click();
+  };
+
+  const getAssetUrl = (path: string | undefined) => {
+    if (!path) return '';
+    return path.startsWith('http') ? path : `${API_BASE}${path}`;
   };
 
   return (
@@ -237,7 +288,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {/* Upload Card */}
-                  <button className="group border border-dashed border-slate-300 rounded-xl h-64 flex flex-col items-center justify-center bg-muted/20 hover:border-primary hover:bg-muted/50 transition-all gap-4">
+                  <button onClick={handleLogoUpload} className="group border border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center bg-muted/20 hover:border-primary hover:bg-muted/50 transition-all gap-4 aspect-video h-full w-full">
                     <div className="bg-background p-4 rounded-full shadow-sm group-hover:scale-110 transition-transform duration-300">
                       <Plus className="h-6 w-6 text-muted-foreground group-hover:text-primary" />
                     </div>
@@ -246,15 +297,9 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
 
                   {/* Logo Cards: Constructed from Assets */}
                   {brandKit.assets?.filter(a => a.category === 'LOGO').map((logo) => (
-                    <Card key={logo.id} className="overflow-hidden group hover:shadow-md transition-all">
+                    <Card key={logo.id} className="overflow-hidden group hover:shadow-lg hover:-translate-y-1 transition-all duration-200">
                       <div className="aspect-video bg-muted/30 flex items-center justify-center p-8 relative border-b">
-                        <img src={logo.url || logo.path} alt="Logo" className="max-h-full max-w-full object-contain" />
-
-                        {/* Overlay Actions */}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                          <Button variant="secondary" size="sm" className="h-8 w-8 p-0"><Download size={14} /></Button>
-                          <Button variant="destructive" size="sm" className="h-8 w-8 p-0"><Trash2 size={14} /></Button>
-                        </div>
+                        <img src={getAssetUrl(logo.url || logo.path)} alt="Logo" className="max-h-full max-w-full object-contain" />
                       </div>
                       <CardHeader className="pb-3 pt-3">
                         <CardTitle className="text-base truncate">{logo.filename}</CardTitle>
@@ -272,9 +317,17 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
             <ScrollArea className="h-full w-full">
               <div className="p-6 max-w-7xl mx-auto">
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {/* Add Color Button */}
+                  <button className="group h-full min-h-[160px] border border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center bg-muted/20 hover:border-primary hover:bg-muted/50 transition-all gap-2">
+                    <div className="bg-background p-2 rounded-full shadow-sm group-hover:scale-110 transition-transform duration-300">
+                      <Plus size={20} className="text-muted-foreground group-hover:text-primary" />
+                    </div>
+                    <span className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">Add Color</span>
+                  </button>
+
                   {/* Colors */}
                   {brandKit.colors?.map((color, idx) => (
-                    <div key={idx} className="group cursor-pointer">
+                    <div key={idx} className="group cursor-pointer flex flex-col h-full hover:-translate-y-1 hover:shadow-lg transition-all duration-200 rounded-xl overflow-hidden bg-background border">
                       <div
                         className="h-32 rounded-t-xl shadow-inner relative flex items-center justify-center border-b"
                         style={{ backgroundColor: color.hex }}
@@ -284,12 +337,12 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
                           {color.hex}
                         </span>
                       </div>
-                      <div className="bg-card border border-t-0 p-3 rounded-b-xl shadow-sm space-y-1">
-                        <div className="flex justify-between items-start">
+                      <div className="bg-card border border-t-0 p-3 rounded-b-xl shadow-sm flex flex-col flex-1 min-h-[100px] justify-between">
+                        <div className="space-y-2">
                           <p className="font-semibold text-foreground text-sm truncate" title={color.name}>{color.name}</p>
                           {/* Show Usage Tag if available */}
                           {'usage' in color && color.usage && (
-                            <span className="text-[10px] uppercase tracking-wider bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+                            <span className="inline-block text-[10px] uppercase tracking-wider bg-muted text-muted-foreground px-1.5 py-0.5 rounded w-fit">
                               {color.usage}
                             </span>
                           )}
@@ -297,7 +350,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
 
                         {/* Rich Data Details */}
                         {'cmyk' in color && (
-                          <div className="text-[10px] text-muted-foreground font-mono space-y-0.5 mt-2">
+                          <div className="text-[10px] text-muted-foreground font-mono space-y-0.5 mt-3 pt-2 border-t">
                             {color.rgb && <div className="flex justify-between"><span>RGB</span> <span>{color.rgb}</span></div>}
                             {color.cmyk && <div className="flex justify-between"><span>CMYK</span> <span>{color.cmyk}</span></div>}
                           </div>
@@ -305,18 +358,11 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
 
                         {/* Fallback for basic colors */}
                         {!('cmyk' in color) && (
-                          <p className="text-xs text-muted-foreground capitalize">{color.type}</p>
+                          <p className="text-xs text-muted-foreground capitalize mt-2">{color.type}</p>
                         )}
                       </div>
                     </div>
                   ))}
-                  {/* Add Color Button */}
-                  <button className="group h-full min-h-[160px] border border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center bg-muted/20 hover:border-primary hover:bg-muted/50 transition-all gap-2">
-                    <div className="bg-background p-2 rounded-full shadow-sm group-hover:scale-110 transition-transform duration-300">
-                      <Plus size={20} className="text-muted-foreground group-hover:text-primary" />
-                    </div>
-                    <span className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">Add Color</span>
-                  </button>
                 </div>
               </div>
             </ScrollArea>
@@ -327,7 +373,7 @@ export const BrandKitInspectionView: React.FC<props> = ({ brandKit }) => {
             <ScrollArea className="h-full w-full">
               <div className="p-6 max-w-5xl mx-auto space-y-4">
                 {localBrandKit.typography && localBrandKit.typography.map((font, idx) => (
-                  <Card key={idx} className="flex flex-col p-6 hover:shadow-md transition-shadow">
+                  <Card key={idx} className="flex flex-col p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-200">
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         {/* Preview of the font */}

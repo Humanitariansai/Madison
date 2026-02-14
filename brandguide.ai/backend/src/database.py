@@ -1,4 +1,3 @@
-import os
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -6,10 +5,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from .config import settings
+
 # Default to localhost for dev, overridable by env (e.g. docker-compose)
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql+asyncpg://user:password@localhost:5432/brandguide"
-)
+DATABASE_URL = settings.DATABASE_URL
+
 
 engine = create_async_engine(DATABASE_URL, echo=True, future=True)
 
