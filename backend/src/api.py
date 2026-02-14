@@ -25,6 +25,7 @@ from .asset_classifier import AssetClassifier
 from .brand_auditor import IntegratedBrandAuditor
 from .brand_guideline_extractor import BrandGuidelineExtractor
 from .brand_guideline_generator import BrandGuidelineGenerator
+from .config import settings
 from .database import get_session, init_db
 from .layout_classifier import LayoutClassifierFactory
 from .logging_conf import configure_logging
@@ -105,8 +106,8 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Semaphore to prevent OOM
-# Limit to 1 concurrent audits because Layout Analysis + ML is memory heavy
-AUDIT_SEMAPHORE = asyncio.Semaphore(1)
+# Configurable via AUDIT_CONCURRENCY env var (default: 1)
+AUDIT_SEMAPHORE = asyncio.Semaphore(settings.AUDIT_CONCURRENCY)
 
 
 @app.post("/brandkit", response_model=BrandKitRead)
