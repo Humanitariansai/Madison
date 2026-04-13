@@ -1,0 +1,31 @@
+.git
+.gitignore
+**/node_modules/**
+**/.vscode/**
+**/.idea/**
+**/.DS_Store
+**/__pycache__/**
+venv/
+.venv/
+env/
+ENV/
+
+# Keep .env.production files so Vite build gets prod vars
+# Ignore generic envs, but allow the frontend production env file
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+# Keep frontend .env.production for Cloud Build to pick up VITE_* values
+!frontend/.env.production
+backend/.env
+backend/.env.local
+backend/.env.development.local
+backend/.env.test.local
+backend/.env.production.local
+
